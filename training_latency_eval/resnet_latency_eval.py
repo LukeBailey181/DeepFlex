@@ -204,7 +204,10 @@ def evaluate_resnet():
     plt.xlabel("Minibatch number")
     plt.title("ResNet-18 training latency")
     plt.plot([i for i in range(len(epoch_0))], epoch_0)
-    plt.show()
+    plt.savefig("ResNet-18_latency.png")
+
+    print(f"\nRESNET TRAINING TIME DATAPOINTS = {len(epoch_0[10:])}")
+    print(f"\nRESNET MEAN TRAINING TIME VALUE = {np.array(epoch_0)[10:].mean()}")
 
 if __name__ == "__main__":
     evaluate_resnet()
