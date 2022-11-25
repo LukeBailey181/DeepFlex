@@ -48,6 +48,9 @@ class Client(Actor):
         self.data = {}
         self.gradients = {}
 
+    def sync_model(self):
+        pass
+
     def run_training(self):
         # TODO: integrate training
         pass
@@ -72,11 +75,15 @@ class Server(Actor):
         client.assigned_server = self
         self.assigned_clients.add(client)
 
+    def remove_client(self, client: Client) -> None:
+        client.assigned_server = None
+        self.assigned_clients.remove(client)
+
     def sync_model_to_client(self, client: Client):
-        client.sync_model(self.global_model)
+        client.sync_model()
 
     def sync_with_client(self, client: Client):
-        client.sync_model(self.global_model)
+        client.sync_model()
 
 
 class Simulation:
@@ -109,19 +116,34 @@ class Simulation:
             new_server = Server(self)
             self.actors[new_server.id] = new_server
 
+    def create_client(self, client_speed=None):
+        speed = client_speed if client_speed else Client.default_speed
+        new_client = Client(self, speed)
+        self.actors[new_client.id] = new_client
+        return new_client.id
+
+    def create_server(self):
+        new_server = Server(self)
+        self.actors[new_server.id] = new_server
+        return new_server.id
+
     def assign_client_to_server(self, server_id: int, client_id: int) -> None:
-        client = self.actors[client_id]
-        server = self.actors[server_id]
+        client: Client = self.actors[client_id]
+        server: Server = self.actors[server_id]
+
+        if client_id not in self.available_clients:
+            print(f"Attempting to assign unavailable client {client_id} to {server_id}!")
+            return
+
+        server.assign_client(client)
+        self.available_clients.remove(client_id)
 
         self.add_event(
-            time=23,
+            time=self.current_time,
             type=SET.CLIENT_CLAIMED,
-            origin=0,
-            target=server_id,
+            origin=server_id,
+            target=client_id,
         )
-
-        # client.assigned_server = server
-        # server.assigned_hosts.add(client)
 
     def add_event(self, *args, event=None, **kwargs) -> SimEvent:
         """
@@ -162,16 +184,16 @@ class Simulation:
             case SET.CLIENT_AVAILABLE:
                 self.available_clients.add(event.origin)
 
-            # case SET.CLIENT_CLAIMED:
-            #     # Server claims client and attempts synchronization
-            #     server, client = self.server_client_from_event(event)
+            case SET.CLIENT_CLAIMED:
+                # Server claims client and attempts synchronization
+                server, client = self.server_client_from_event(event)
 
-            #     self.add_event(
-            #         time=self.now(),
-            #         type=SET.CLIENT_SYNCHRONIZE_START,
-            #         origin=server.id,
-            #         target=client.id,
-            #     )
+                self.add_event(
+                    time=self.now(),
+                    type=SET.CLIENT_SYNCHRONIZE_START,
+                    origin=server.id,
+                    target=client.id,
+                )
 
             case SET.CLIENT_REQUEST_AGGREGATION:
                 # Client requests aggregation from server
@@ -212,6 +234,8 @@ class Simulation:
                 client, server = self.client_server_from_event(event)
                 server.is_busy = True
 
+                # TODO: receive client update, perform aggregation
+
                 self.add_event(
                     SimEvent(
                         time=self.current_time + server.aggregation_time,
@@ -249,6 +273,8 @@ class Simulation:
             case SET.CLIENT_SYNCHRONIZE_START:
                 client, server = self.client_server_from_event(event)
 
+                # TODO: send client updated model
+
                 self.add_event(
                     SimEvent(
                         origin=event.origin,
@@ -274,6 +300,7 @@ class Simulation:
                 client, server = self.client_server_from_event(event)
 
                 # TODO: at this point, model state should be caught up, check this is the case
+                # TODO: increment dataloader and send to minibatch to client
                 client.run_training()
 
                 self.add_event(
