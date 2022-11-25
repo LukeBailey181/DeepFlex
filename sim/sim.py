@@ -96,7 +96,7 @@ class Simulation:
         self.actor_id_counter: int = 0
         self.actors: dict[int, Actor] = {}
 
-        self.available_clients = set[int]
+        self.available_clients: set[int] = set()
 
     def now(self):
         return self.current_time
