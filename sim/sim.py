@@ -7,7 +7,7 @@ from icecream import ic
 
 ic.configureOutput(includeContext=True)
 
-from events import SimEvent, SimEventType as SET
+from sim.events import SimEvent, SimEventType as SET
 
 
 @unique
@@ -132,7 +132,9 @@ class Simulation:
         server: Server = self.actors[server_id]
 
         if client_id not in self.available_clients:
-            print(f"Attempting to assign unavailable client {client_id} to {server_id}!")
+            print(
+                f"Attempting to assign unavailable client {client_id} to {server_id}!"
+            )
             return
 
         server.assign_client(client)
