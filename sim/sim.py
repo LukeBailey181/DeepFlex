@@ -127,6 +127,19 @@ class Simulation:
         self.actors[new_server.id] = new_server
         return new_server.id
 
+    def activate_client(self, client_id, time):
+        if time < self.current_time:
+            print(
+                f"Warning! Activation time {time} is before current simulation time {self.current_time}."
+            )
+
+        self.add_event(
+            time=time,
+            type=SET.CLIENT_AVAILABLE,
+            origin=client_id,
+            target=None,
+        )
+
     def assign_client_to_server(self, server_id: int, client_id: int) -> None:
         client: Client = self.actors[client_id]
         server: Server = self.actors[server_id]
