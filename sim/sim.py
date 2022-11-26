@@ -52,7 +52,7 @@ class Client(Actor):
     def sync_model(self):
         pass
 
-    def run_training(self):
+    def run_training(self, batch):
         # TODO: integrate training
         pass
 
@@ -72,6 +72,8 @@ class Server(Actor):
         self.is_busy: bool = False
         # Gets assigned when experiment is run 
         self.dataset = None
+        # Iterator of dataset that can be incremented
+        self.dataset_iter = None 
 
     # TODO: redo actions for server
     def assign_client(self, client: Client) -> None:
@@ -90,6 +92,7 @@ class Server(Actor):
 
     def set_dataset(self, dataloader: DataLoader):
         self.dataset = dataloader
+        self.dataset_iter = iter(dataloader)
 
 class Simulation:
     def __init__(self) -> None:
@@ -334,8 +337,17 @@ class Simulation:
                 client, server = self.client_server_from_event(event)
 
                 # TODO: at this point, model state should be caught up, check this is the case
+                # TODO: Make sure syncing model has worked
                 # TODO: increment dataloader and send to minibatch to client
-                client.run_training()
+
+                try:
+                    batch = next(server.dataset_iter)
+                except StopIteration:
+                    # Iterator done 
+                    print("Iterator Done")
+                    # TODO ADD WAY TO STOP MORE CLIENTS FROM TRAINING HERE
+
+                client.run_training(batch)
 
                 self.add_event(
                     SimEvent(
