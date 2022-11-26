@@ -209,7 +209,7 @@ class Simulation:
             )
         )
 
-    def assign_client_to_server(self, server_id: int, client_id: int, t=None) -> None:
+    def assign_client_to_server(self, client_id: int, server_id: int, t=None) -> None:
         time = t if t else self.now()
 
         self.add_event(
@@ -371,7 +371,7 @@ class Simulation:
             case SET.SERVER_CLIENT_AGGREGATION_END:
                 # After aggregation, make client available if training is done,
                 # otherwise synchronize and continue.
-                client, server = self.client_server_from_event(event)
+                server, client = self.server_client_from_event(event)
 
                 # TODO:
                 #       server.update_model()
