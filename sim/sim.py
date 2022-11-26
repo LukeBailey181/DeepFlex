@@ -70,10 +70,10 @@ class Server(Actor):
         self.global_model = {}
         self.assigned_clients: Set[Client] = set()
         self.is_busy: bool = False
-        # Gets assigned when experiment is run 
+        # Gets assigned when experiment is run
         self.dataset = None
         # Iterator of dataset that can be incremented
-        self.dataset_iter = None 
+        self.dataset_iter = None
 
     # TODO: redo actions for server
     def assign_client(self, client: Client) -> None:
@@ -98,8 +98,10 @@ class Server(Actor):
     def set_model(self, model) -> None:
         self.global_model = model
 
+
 class Simulation:
     def __init__(self) -> None:
+        self.paused: bool = False
         self.time_limit: int = 100
         self.current_time: int = 0
         self.event_queue: PriorityQueue[SimEvent] = PriorityQueue()
@@ -109,6 +111,14 @@ class Simulation:
         self.actors: dict[int, Actor] = {}
 
         self.available_clients: set[int] = set()
+
+    def _validate_time(self, t: int, msg: str):
+        time = t if t else self.now()
+        if time < self.now():
+            print(
+                f"Warning! Event scheduled for time {time} before current simulation time {self.now()}."
+            )
+        return time
 
     def now(self):
         return self.current_time
@@ -128,21 +138,23 @@ class Simulation:
             new_server = Server(self)
             self.actors[new_server.id] = new_server
 
-    def create_client(self, client_speed=None):
+    def create_client(self, client_speed=None, t=None):
         speed = client_speed if client_speed else Client.default_speed
         new_client = Client(self, speed)
         self.actors[new_client.id] = new_client
         return new_client.id
 
-    def create_server(self):
+    def create_server(self, s_params, t=None):
         new_server = Server(self)
         self.actors[new_server.id] = new_server
         return new_server.id
 
-    def activate_client(self, client_id, time):
-        if time < self.current_time:
+    def activate_client(self, client_id, t=None):
+        time = t if t else self.now()
+
+        if time < self.now():
             print(
-                f"Warning! Activation time {time} is before current simulation time {self.current_time}."
+                f"Warning! Requested activation time {time} is before current simulation time {self.now()}."
             )
 
         self.add_event(
@@ -152,7 +164,9 @@ class Simulation:
             target=None,
         )
 
-    def assign_client_to_server(self, server_id: int, client_id: int) -> None:
+    def assign_client_to_server(self, server_id: int, client_id: int, t=None) -> None:
+        time = t if t else self.now()
+
         client: Client = self.actors[client_id]
         server: Server = self.actors[server_id]
 
@@ -160,7 +174,6 @@ class Simulation:
             print(
                 f"Attempting to assign unavailable client {client_id} to {server_id}!"
             )
-            return
 
         server.assign_client(client)
         self.available_clients.remove(client_id)
@@ -202,6 +215,14 @@ class Simulation:
         ic(event)
 
         match event.type:
+
+    # Simulation control events
+            case SET.SIM_PAUSE:
+                self.paused = True
+
+            case SET.SIM_PRINT_ACTORS:
+                self.print_actors()
+
             case SET.CLIENT_ONLINE:
                 self.available_clients.add(event.origin)
 
@@ -263,13 +284,13 @@ class Simulation:
 
                 # TODO: receive client update, perform aggregation
 
-                # TODO: Async 
-                #       gradients = client.gradients 
+                # TODO: Async
+                #       gradients = client.gradients
                 #       server.aggregate_gradients(gradients)
                 #           in the server, store aggregated gradients, this is only called once.
                 #
                 # TODO: Sync
-                #       gradients = client.gradients 
+                #       gradients = client.gradients
                 #       server.aggregate_gradients(gradients)
                 #           in sync case, wait for all clients to send updates.
 
@@ -287,7 +308,7 @@ class Simulation:
                 # otherwise synchronize and continue.
                 client, server = self.client_server_from_event(event)
 
-                # TODO: 
+                # TODO:
                 #       server.update_model()
                 #       uses stored aggregated gradients
 
@@ -347,7 +368,7 @@ class Simulation:
                 try:
                     batch = next(server.dataset_iter)
                 except StopIteration:
-                    # Iterator done 
+                    # Iterator done
                     print("Iterator Done")
                     # TODO ADD WAY TO STOP MORE CLIENTS FROM TRAINING HERE
 
@@ -380,7 +401,9 @@ class Simulation:
         return
 
     def run(self):
-        while not self.event_queue.empty() and self.current_time < self.time_limit:
+        self.paused = False
+
+        while not self.paused and not self.event_queue.empty() and self.current_time < self.time_limit:
             event = self.event_queue.get()
 
             # report late events--this should never happen

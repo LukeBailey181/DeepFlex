@@ -37,6 +37,9 @@ class SimEventType(Enum):
     # Server events
     SERVER_CLAIM_CLIENT = auto()
 
+    # Simulation control events
+    SIM_PAUSE = auto()
+    SIM_PRINT_ACTORS = auto()
 
 
 @dataclass(order=True, frozen=True)
