@@ -10,12 +10,14 @@ def run_resnet_simulation():
     # run simulation
     simulation = Simulation()
 
-    server_id = simulation.create_server()
-    client_id = simulation.create_client()
-    server: Server = simulation.actors[server_id]
-    simulation.online_client(client_id)
+    s1 = simulation.create_server()
+    c1 = simulation.create_client()
+    server: Server = simulation.actors[s1]
+    simulation.online_client(c1)
     simulation.print_actors()
-    simulation.assign_client_to_server(server_id, client_id)
+    simulation.assign_client_to_server(client_id=c1, server_id=s1)
+    # Default value is 100
+    simulation.time_limit = 8000
 
     # Assign dataset
     cfar_data = get_cfar_dataset()
