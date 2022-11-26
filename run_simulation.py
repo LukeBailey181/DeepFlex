@@ -20,8 +20,10 @@ def run_resnet_simulation():
     simulation.time_limit = 8000
 
     # Assign dataset
-    cfar_data = get_cfar_dataset()
+    cfar_data = get_cfar_dataset(trainset_size=1)
     train_dataset = cfar_data[0]['train']
+    print("DEBUG")
+    print(len(train_dataset))
     server.set_dataset(train_dataset)
 
     # Assign model

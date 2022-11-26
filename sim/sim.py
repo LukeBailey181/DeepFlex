@@ -84,7 +84,7 @@ class Server(Actor):
         self.is_busy: bool = False
 
         self.current_epoch = 0
-        self.target_epoch = 100
+        self.target_epoch = 10
 
         # Dataset and iterator
         self.dataset = None
@@ -110,18 +110,19 @@ class Server(Actor):
         self.global_model = model
 
     def get_next_batch(self):
+
         try:
             batch = next(self.dataset_iter)
+            return batch
         except StopIteration:
             if self.current_epoch < self.target_epoch:
                 # reset iterator if target epoch not reached
                 # TODO: replace this with convergence metric
+                self.current_epoch += 1
                 self.dataset_iter = iter(self.dataset)
                 return self.get_next_batch()
 
-            return None
-
-        return batch
+        return None
 
 
 class Simulation:
