@@ -3,6 +3,8 @@ from enum import Enum, unique
 from typing import List, Set, Tuple
 from queue import PriorityQueue
 from torch.utils.data import DataLoader
+import torch.nn as nn
+import torch.optim as optim
 
 from icecream import ic
 
@@ -45,19 +47,33 @@ class Client(Actor):
 
         self.assigned_server: Server = None
         self.task_complete = True
-        self.model = {}
+        self.model = None
         self.data = {}
         self.gradients = {}
+
+        self.criterion = nn.CrossEntropyLoss()
+        self.optimizer = optim.SGD(self.model.parameters(), lr=0.001, momentum=0.9)
 
     def sync_model(self):
         pass
 
     def run_training(self, batch):
         # TODO: integrate training
+        inputs, labels = batch
+
+        # zero the parameter gradients
+        self.optimizer.zero_grad()
+
+        # forward + backward + optimize
+        outputs = self.model(inputs)
+        loss = self.criterion(outputs, labels)
+        loss.backward()
         pass
 
     def get_gradients(self):
-        pass
+        for name, w in self.model.named_parameters():
+            self.gradients[name] = w.grad
+        return self.gradients
 
 
 class Server(Actor):
