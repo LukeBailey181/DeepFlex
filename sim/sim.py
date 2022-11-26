@@ -2,6 +2,7 @@ from __future__ import annotations
 from enum import Enum, unique
 from typing import List, Set, Tuple
 from queue import PriorityQueue
+from torch.utils.data import DataLoader
 
 from icecream import ic
 
@@ -69,6 +70,8 @@ class Server(Actor):
         self.global_model = {}
         self.assigned_clients: Set[Client] = set()
         self.is_busy: bool = False
+        # Gets assigned when experiment is run 
+        self.dataset = None
 
     # TODO: redo actions for server
     def assign_client(self, client: Client) -> None:
@@ -85,6 +88,8 @@ class Server(Actor):
     def sync_with_client(self, client: Client):
         client.sync_model()
 
+    def set_dataset(self, dataloader: DataLoader):
+        self.dataset = dataloader
 
 class Simulation:
     def __init__(self) -> None:
@@ -251,6 +256,16 @@ class Simulation:
 
                 # TODO: receive client update, perform aggregation
 
+                # TODO: Async 
+                #       gradients = client.gradients 
+                #       server.aggregate_gradients(gradients)
+                #           in the server, store aggregated gradients, this is only called once.
+                #
+                # TODO: Sync
+                #       gradients = client.gradients 
+                #       server.aggregate_gradients(gradients)
+                #           in sync case, wait for all clients to send updates.
+
                 self.add_event(
                     SimEvent(
                         time=self.current_time + server.aggregation_time,
@@ -264,6 +279,10 @@ class Simulation:
                 # After aggregation, make client available if training is done,
                 # otherwise synchronize and continue.
                 client, server = self.client_server_from_event(event)
+
+                # TODO: 
+                #       server.update_model()
+                #       uses stored aggregated gradients
 
                 if client.task_complete:
                     self.add_event(
