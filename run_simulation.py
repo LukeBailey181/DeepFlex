@@ -1,5 +1,8 @@
-from training_latency_eval.resnet_latency_eval import get_cfar_dataset
+from training_latency_eval.resnet_latency_eval import get_cfar_dataset, get_resnet_and_optimizer
 from sim.sim import Simulation, Client, Server
+
+# For instantiating ResNet model
+RESNET_CLASSES = ('plane', 'car', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck')
 
 def run_resnet_simulation():
 
@@ -18,6 +21,10 @@ def run_resnet_simulation():
     cfar_data = get_cfar_dataset()
     train_dataset = cfar_data[0]['train']
     server.set_dataset(train_dataset)
+
+    # Assign model
+    resnet, _, _, _= get_resnet_and_optimizer(RESNET_CLASSES)
+    server.set_model(resnet)
 
     simulation.run()
 

@@ -90,9 +90,12 @@ class Server(Actor):
     def sync_with_client(self, client: Client):
         client.sync_model()
 
-    def set_dataset(self, dataloader: DataLoader):
+    def set_dataset(self, dataloader: DataLoader) -> None:
         self.dataset = dataloader
         self.dataset_iter = iter(dataloader)
+
+    def set_model(self, model) -> None:
+        self.global_model = model
 
 class Simulation:
     def __init__(self) -> None:
@@ -338,7 +341,6 @@ class Simulation:
 
                 # TODO: at this point, model state should be caught up, check this is the case
                 # TODO: Make sure syncing model has worked
-                # TODO: increment dataloader and send to minibatch to client
 
                 try:
                     batch = next(server.dataset_iter)
