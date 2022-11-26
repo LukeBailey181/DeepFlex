@@ -8,7 +8,7 @@ from icecream import ic
 
 ic.configureOutput(includeContext=True)
 
-from events import SimEvent, SimEventType as SET
+from .events import SimEvent, SimEventType as SET
 
 
 @unique
@@ -500,16 +500,3 @@ class Simulation:
             self.process_event(event)
 
         print(f"Simulation finished running at time {self.current_time}")
-
-
-if __name__ == "__main__":
-    simulation = Simulation()
-    c1 = simulation.create_client()
-    c2 = simulation.create_client()
-    s1 = simulation.create_server()
-    simulation.online_client(c1)
-    simulation.online_client(c2)
-    simulation.assign_client_to_server(s1, c2)
-    simulation.print_actors()
-
-    simulation.run()
