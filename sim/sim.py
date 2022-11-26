@@ -8,7 +8,7 @@ from icecream import ic
 
 ic.configureOutput(includeContext=True)
 
-from sim.events import SimEvent, SimEventType as SET
+from events import SimEvent, SimEventType as SET
 
 
 @unique
@@ -170,7 +170,7 @@ class Simulation:
         self.actors[new_client.id] = new_client
         return new_client.id
 
-    def create_server(self, s_params, t=None):
+    def create_server(self, t=None):
         new_server = Server(self)
         self.actors[new_server.id] = new_server
         return new_server.id
@@ -184,10 +184,12 @@ class Simulation:
             )
 
         self.add_event(
-            time=time,
-            type=SET.CLIENT_ONLINE,
-            origin=client_id,
-            target=None,
+            SimEvent(
+                time=time,
+                type=SET.CLIENT_ONLINE,
+                origin=client_id,
+                target=None,
+            )
         )
 
     def offline_client(self, client_id, t=None):
@@ -199,20 +201,24 @@ class Simulation:
             )
 
         self.add_event(
-            time=time,
-            type=SET.CLIENT_OFFLINE,
-            origin=client_id,
-            target=None,
+            SimEvent(
+                time=time,
+                type=SET.CLIENT_OFFLINE,
+                origin=client_id,
+                target=None,
+            )
         )
 
     def assign_client_to_server(self, server_id: int, client_id: int, t=None) -> None:
         time = t if t else self.now()
 
         self.add_event(
-            time=time,
-            type=SET.CLIENT_CLAIMED,
-            origin=server_id,
-            target=client_id,
+            SimEvent(
+                time=time,
+                type=SET.CLIENT_CLAIMED,
+                origin=server_id,
+                target=client_id,
+            )
         )
 
     def add_event(self, event: SimEvent):
@@ -435,7 +441,7 @@ class Simulation:
                             time=self.current_time,
                             type=SET.CLIENT_AVAILABLE,
                             origin=client.id,
-                            target=server.id
+                            target=server.id,
                         )
                     )
                     return
@@ -501,6 +507,8 @@ if __name__ == "__main__":
     c1 = simulation.create_client()
     c2 = simulation.create_client()
     s1 = simulation.create_server()
+    simulation.online_client(c1)
+    simulation.online_client(c2)
     simulation.assign_client_to_server(s1, c2)
     simulation.print_actors()
 
