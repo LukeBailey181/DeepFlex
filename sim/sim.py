@@ -49,8 +49,8 @@ class Client(Actor):
         self.data = {}
         self.gradients = {}
 
-    def sync_model(self):
-        pass
+    def sync_model(self, global_model) -> None:
+        self.model = global_model
 
     def run_training(self, batch):
         # TODO: integrate training
@@ -85,8 +85,9 @@ class Server(Actor):
         self.assigned_clients.remove(client)
 
     def sync_model_to_client(self, client: Client):
-        client.sync_model()
+        client.sync_model(self.global_model)
 
+    # TODO: Distinguish this with the above method
     def sync_with_client(self, client: Client):
         client.sync_model()
 
@@ -313,7 +314,8 @@ class Simulation:
             case SET.CLIENT_SYNCHRONIZE_START:
                 client, server = self.client_server_from_event(event)
 
-                # TODO: send client updated model
+                # Sync globel model with client
+                server.sync_model_to_client(client)
 
                 self.add_event(
                     SimEvent(
