@@ -18,6 +18,12 @@ class ActorType(Enum):
     SCHEDULER = 2
 
 
+@unique
+class TrainingMode(Enum):
+    SYNC = 0
+    ASYNC = 1
+
+
 class Actor:
     """
     Base class for simulation actors--handles events
@@ -44,10 +50,11 @@ class Client(Actor):
         self.training_time = 10 // speed
 
         self.assigned_server: Server = None
-        self.task_complete = True
+        self.task_complete = False
         self.model = {}
         self.data = {}
         self.gradients = {}
+        self.staleness = 0
 
     def sync_model(self, global_model) -> None:
         self.model = global_model
@@ -67,12 +74,20 @@ class Server(Actor):
         self.aggregation_time = 10
         self.sync_time = 2
 
-        self.global_model = {}
+        # Training mode, starts as synchronous
+        self.mode: TrainingMode = TrainingMode.SYNC
+
+        self.global_model = None
         self.assigned_clients: Set[Client] = set()
+        self.client_updates = {}
+        self.client_staleness_threshold = 5
         self.is_busy: bool = False
-        # Gets assigned when experiment is run
+
+        self.current_epoch = 0
+        self.target_epoch = 100
+
+        # Dataset and iterator
         self.dataset = None
-        # Iterator of dataset that can be incremented
         self.dataset_iter = None
 
     # TODO: redo actions for server
@@ -87,16 +102,26 @@ class Server(Actor):
     def sync_model_to_client(self, client: Client):
         client.sync_model(self.global_model)
 
-    # TODO: Distinguish this with the above method
-    def sync_with_client(self, client: Client):
-        client.sync_model()
-
     def set_dataset(self, dataloader: DataLoader) -> None:
         self.dataset = dataloader
         self.dataset_iter = iter(dataloader)
 
     def set_model(self, model) -> None:
         self.global_model = model
+
+    def get_next_batch(self):
+        try:
+            batch = next(self.dataset_iter)
+        except StopIteration:
+            if self.current_epoch < self.target_epoch:
+                # reset iterator if target epoch not reached
+                # TODO: replace this with convergence metric
+                self.dataset_iter = iter(self.dataset)
+                return self.get_next_batch()
+
+            return None
+
+        return batch
 
 
 class Simulation:
@@ -110,6 +135,7 @@ class Simulation:
         self.actor_id_counter: int = 0
         self.actors: dict[int, Actor] = {}
 
+        self.online_clients: set[int] = set()
         self.available_clients: set[int] = set()
 
     def _validate_time(self, t: int, msg: str):
@@ -149,7 +175,7 @@ class Simulation:
         self.actors[new_server.id] = new_server
         return new_server.id
 
-    def activate_client(self, client_id, t=None):
+    def online_client(self, client_id, t=None):
         time = t if t else self.now()
 
         if time < self.now():
@@ -159,7 +185,22 @@ class Simulation:
 
         self.add_event(
             time=time,
-            type=SET.CLIENT_AVAILABLE,
+            type=SET.CLIENT_ONLINE,
+            origin=client_id,
+            target=None,
+        )
+
+    def offline_client(self, client_id, t=None):
+        time = t if t else self.now()
+
+        if time < self.now():
+            print(
+                f"Warning! Requested deactivation time {time} is before current simulation time {self.now()}."
+            )
+
+        self.add_event(
+            time=time,
+            type=SET.CLIENT_OFFLINE,
             origin=client_id,
             target=None,
         )
@@ -167,35 +208,16 @@ class Simulation:
     def assign_client_to_server(self, server_id: int, client_id: int, t=None) -> None:
         time = t if t else self.now()
 
-        client: Client = self.actors[client_id]
-        server: Server = self.actors[server_id]
-
-        if client_id not in self.available_clients:
-            print(
-                f"Attempting to assign unavailable client {client_id} to {server_id}!"
-            )
-
-        server.assign_client(client)
-        self.available_clients.remove(client_id)
-
         self.add_event(
-            time=self.current_time,
+            time=time,
             type=SET.CLIENT_CLAIMED,
             origin=server_id,
             target=client_id,
         )
 
-    def add_event(self, *args, event=None, **kwargs) -> SimEvent:
-        """
-        Use an existing event or construct a new event to add to the event queue.
-        """
-        e = (
-            event
-            if event is not None
-            else SimEvent(time=kwargs.get("time"), type=kwargs.get("type"))
-        )
-        self.event_queue.put(e)
-        self.timeline.put(e)
+    def add_event(self, event: SimEvent):
+        self.event_queue.put(event)
+        self.timeline.put(event)
 
     # helpers to obtain Actor references from an event
     def client_server_from_event(self, event: SimEvent) -> Tuple[Client, Server]:
@@ -216,7 +238,7 @@ class Simulation:
 
         match event.type:
 
-    # Simulation control events
+            # Simulation control events
             case SET.SIM_PAUSE:
                 self.paused = True
 
@@ -224,23 +246,48 @@ class Simulation:
                 self.print_actors()
 
             case SET.CLIENT_ONLINE:
-                self.available_clients.add(event.origin)
+                client: Client = self.actors[event.origin]
+
+                self.online_clients.add(client.id)
+                self.available_clients.add(client.id)
 
             case SET.CLIENT_OFFLINE:
-                self.available_clients.remove(event.origin)
+                client: Client = self.actors[event.origin]
+
+                client.assigned_server.remove_client(client)
+                self.available_clients.remove(client.id)
+                self.online_clients.remove(client.id)
 
             case SET.CLIENT_AVAILABLE:
-                self.available_clients.add(event.origin)
+                client, server = self.client_server_from_event(event)
+
+                client.assigned_server.remove_client(client)
+                self.available_clients.add(client.id)
 
             case SET.CLIENT_CLAIMED:
                 # Server claims client and attempts synchronization
                 server, client = self.server_client_from_event(event)
 
+                if client.id not in self.online_clients:
+                    print(
+                        f"Attempting to assign offline client {client.id} to {server.id}!"
+                    )
+
+                if client.id not in self.available_clients:
+                    print(
+                        f"Attempting to assign unavailable client {client.id} to {server.id}!"
+                    )
+
+                server.assign_client(client)
+                self.available_clients.remove(client.id)
+
                 self.add_event(
-                    time=self.now(),
-                    type=SET.CLIENT_SYNCHRONIZE_START,
-                    origin=server.id,
-                    target=client.id,
+                    SimEvent(
+                        time=self.now(),
+                        type=SET.SERVER_CLIENT_SYNC_START,
+                        origin=server.id,
+                        target=client.id,
+                    )
                 )
 
             case SET.CLIENT_REQUEST_AGGREGATION:
@@ -249,37 +296,49 @@ class Simulation:
 
                 defer_event = SimEvent(
                     time=self.current_time,
-                    type=SET.CLIENT_REQUEST_DEFERRED,
+                    type=SET.SERVER_DEFER_CLIENT_REQUEST,
                     origin=server.id,
                     target=client.id,
                 )
 
                 start_event = SimEvent(
                     time=self.current_time,
-                    type=SET.CLIENT_AGGREGATION_START,
+                    type=SET.SERVER_CLIENT_AGGREGATION_START,
                     origin=server.id,
                     target=client.id,
                 )
 
                 self.add_event(defer_event if server.is_busy else start_event)
 
-            case SET.CLIENT_REQUEST_DEFERRED:
+            case SET.SERVER_DEFER_CLIENT_REQUEST:
                 # Server defers aggregation requests
-                client, server = self.client_server_from_event(event)
+                server, client = self.server_client_from_event(event)
 
-                # TODO: make client continue training and limit number of retries
-                self.add_event(
-                    SimEvent(
-                        # TODO: make retry time per client
-                        time=self.current_time + Client.default_retry_time,
-                        type=SET.CLIENT_REQUEST_AGGREGATION,
-                        origin=client.id,
-                        target=None,
+                if client.staleness < server.client_staleness_threshold:
+                    # client continues training if staleness not exceeded
+                    self.add_event(
+                        SimEvent(
+                            time=self.current_time,
+                            type=SET.CLIENT_TRAINING_START,
+                            origin=client.id,
+                            target=server.id,
+                        )
                     )
-                )
 
-            case SET.CLIENT_AGGREGATION_START:
-                client, server = self.client_server_from_event(event)
+                else:
+                    # client training blocked until aggregation complete
+                    self.add_event(
+                        SimEvent(
+                            # TODO: make retry time per client
+                            time=self.current_time + 1,
+                            type=SET.CLIENT_REQUEST_AGGREGATION,
+                            origin=client.id,
+                            target=server.id,
+                        )
+                    )
+
+            case SET.SERVER_CLIENT_AGGREGATION_START:
+                server, client = self.server_client_from_event(event)
                 server.is_busy = True
 
                 # TODO: receive client update, perform aggregation
@@ -297,13 +356,13 @@ class Simulation:
                 self.add_event(
                     SimEvent(
                         time=self.current_time + server.aggregation_time,
-                        type=SET.CLIENT_AGGREGATION_END,
-                        origin=client.id,
-                        target=server.id,
+                        type=SET.SERVER_CLIENT_AGGREGATION_END,
+                        origin=server.id,
+                        target=client.id,
                     )
                 )
 
-            case SET.CLIENT_AGGREGATION_END:
+            case SET.SERVER_CLIENT_AGGREGATION_END:
                 # After aggregation, make client available if training is done,
                 # otherwise synchronize and continue.
                 client, server = self.client_server_from_event(event)
@@ -316,46 +375,49 @@ class Simulation:
                     self.add_event(
                         SimEvent(
                             time=self.current_time,
-                            type=SET.CLIENT_ONLINE,
+                            type=SET.CLIENT_AVAILABLE,
                             origin=client.id,
                             target=server.id,
                         )
                     )
 
                 else:
-                    self.add_event(
-                        SimEvent(
-                            time=self.current_time + server.aggregation_time,
-                            type=SET.CLIENT_SYNCHRONIZE_START,
-                            origin=client.id,
-                            target=server.id,
+                    if client.id in self.online_clients:
+                        self.add_event(
+                            SimEvent(
+                                time=self.current_time + server.aggregation_time,
+                                type=SET.SERVER_CLIENT_SYNC_START,
+                                origin=server.id,
+                                target=client.id,
+                            )
                         )
-                    )
 
-            case SET.CLIENT_SYNCHRONIZE_START:
-                client, server = self.client_server_from_event(event)
+            case SET.SERVER_CLIENT_SYNC_START:
+                server, client = self.server_client_from_event(event)
 
-                # Sync globel model with client
+                # Sync global model with client
                 server.sync_model_to_client(client)
 
                 self.add_event(
                     SimEvent(
-                        origin=event.origin,
                         time=self.current_time + server.sync_time,
-                        type=SET.CLIENT_SYNCHRONIZE_END,
+                        type=SET.SERVER_CLIENT_SYNC_END,
+                        origin=server.id,
+                        target=client.id,
                     )
                 )
 
-            case SET.CLIENT_SYNCHRONIZE_END:
+            case SET.SERVER_CLIENT_SYNC_END:
                 # Immediately start training as soon as synchronization is done.
-                client, server = self.client_server_from_event(event)
+                server, client = self.server_client_from_event(event)
                 server.is_busy = False
 
                 self.add_event(
                     SimEvent(
-                        origin=event.origin,
                         time=self.current_time,
                         type=SET.CLIENT_TRAINING_START,
+                        origin=client.id,
+                        target=server.id,
                     )
                 )
 
@@ -364,35 +426,42 @@ class Simulation:
 
                 # TODO: at this point, model state should be caught up, check this is the case
                 # TODO: Make sure syncing model has worked
+                batch = server.get_next_batch()
 
-                try:
-                    batch = next(server.dataset_iter)
-                except StopIteration:
-                    # Iterator done
-                    print("Iterator Done")
-                    # TODO ADD WAY TO STOP MORE CLIENTS FROM TRAINING HERE
+                if batch is None:
+                    # no more data available
+                    self.add_event(
+                        SimEvent(
+                            time=self.current_time,
+                            type=SET.CLIENT_AVAILABLE,
+                            origin=client.id,
+                            target=server.id
+                        )
+                    )
+                    return
 
                 client.run_training(batch)
 
                 self.add_event(
                     SimEvent(
-                        origin=event.origin,
                         time=self.current_time + client.training_time,
                         type=SET.CLIENT_TRAINING_END,
+                        origin=client.id,
+                        target=server.id,
                     )
                 )
 
             case SET.CLIENT_TRAINING_END:
+                client, server = self.client_server_from_event(event)
+
                 self.add_event(
                     SimEvent(
-                        origin=event.origin,
                         time=self.current_time,
                         type=SET.CLIENT_REQUEST_AGGREGATION,
+                        origin=client.id,
+                        target=server.id,
                     )
                 )
-
-                # TODO: check if client is done training here
-                # if all data is gone through, set client.task_complete = True
 
             case _:
                 print(f"Handler for event type {event.type} not implemented!")
@@ -403,7 +472,11 @@ class Simulation:
     def run(self):
         self.paused = False
 
-        while not self.paused and not self.event_queue.empty() and self.current_time < self.time_limit:
+        while (
+            not self.paused
+            and not self.event_queue.empty()
+            and self.current_time < self.time_limit
+        ):
             event = self.event_queue.get()
 
             # report late events--this should never happen
@@ -425,9 +498,10 @@ class Simulation:
 
 if __name__ == "__main__":
     simulation = Simulation()
-    simulation.init_clients(client_count=5, client_speeds=[1, 1, 1, 1, 1])
-    simulation.init_servers(server_count=1)
+    c1 = simulation.create_client()
+    c2 = simulation.create_client()
+    s1 = simulation.create_server()
+    simulation.assign_client_to_server(s1, c2)
     simulation.print_actors()
-    simulation.assign_client_to_server(5, 0)
 
     simulation.run()

@@ -17,18 +17,19 @@ class SimEventType(Enum):
     # include events for interactions between servers (and possibly scheduler)
 
     # Client availability
-    CLIENT_ONLINE = auto()  # Client is newly online
-    CLIENT_OFFLINE = auto()  # Client is taken offline
-    CLIENT_AVAILABLE = auto()  # Client is now available after finishing task
-    CLIENT_CLAIMED = auto()  # Client is claimed by a server
+    CLIENT_ONLINE = auto()      # Client is newly online
+    CLIENT_OFFLINE = auto()     # Client is taken offline
+    CLIENT_AVAILABLE = auto()   # Client is now available after finishing task
+    CLIENT_CLAIMED = auto()     # Client is claimed by a server
 
     # Client aggregation and synchronization events
-    CLIENT_REQUEST_AGGREGATION = auto()
-    CLIENT_REQUEST_DEFERRED = auto()
-    CLIENT_AGGREGATION_START = auto()
-    CLIENT_AGGREGATION_END = auto()
-    CLIENT_SYNCHRONIZE_START = auto()
-    CLIENT_SYNCHRONIZE_END = auto()
+    CLIENT_REQUEST_AGGREGATION = auto() #
+    SERVER_DEFER_CLIENT_REQUEST = auto()    #
+    SERVER_CLIENT_AGGREGATION_START = auto()   #
+    SERVER_CLIENT_AGGREGATION_END = auto()     #
+
+    SERVER_CLIENT_SYNC_START = auto()   #
+    SERVER_CLIENT_SYNC_END = auto()     #
 
     # Client training events
     CLIENT_TRAINING_START = auto()
