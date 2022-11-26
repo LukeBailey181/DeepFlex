@@ -3,6 +3,9 @@ from enum import Enum, unique
 from typing import List, Set, Tuple
 from queue import PriorityQueue
 from torch.utils.data import DataLoader
+import torch.nn as nn
+import torch.optim as optim
+from collections import defaultdict
 
 from icecream import ic
 
@@ -51,9 +54,12 @@ class Client(Actor):
 
         self.assigned_server: Server = None
         self.task_complete = False
-        self.model = {}
+        self.model = None
         self.data = {}
-        self.gradients = {}
+        self.gradients = defaultdict(lambda: 0)
+
+        self.criterion = nn.CrossEntropyLoss()
+        self.optimizer = optim.SGD(self.model.parameters(), lr=0.001, momentum=0.9)
         self.staleness = 0
 
     def sync_model(self, global_model) -> None:
@@ -61,9 +67,25 @@ class Client(Actor):
 
     def run_training(self, batch):
         # TODO: integrate training
+        inputs, labels = batch
+
+        # zero the parameter gradients
+        self.optimizer.zero_grad()
+
+        # forward + backward + optimize
+        outputs = self.model(inputs)
+        loss = self.criterion(outputs, labels)
+        loss.backward()
+        self.update_gradients()
         pass
 
-    def get_gradients(self):
+    def clear_gradients(self):
+        for name in self.gradients:
+            self.gradients[name] = 0
+
+    def update_gradients(self):
+        for name, w in self.model.named_parameters():
+            self.gradients[name] += w.grad
         pass
 
 
@@ -89,6 +111,7 @@ class Server(Actor):
         # Dataset and iterator
         self.dataset = None
         self.dataset_iter = None
+        self.server_gradient_dict = defaultdict(lambda: 0)
 
     # TODO: redo actions for server
     def assign_client(self, client: Client) -> None:
@@ -101,6 +124,19 @@ class Server(Actor):
 
     def sync_model_to_client(self, client: Client):
         client.sync_model(self.global_model)
+
+    def clear_gradients(self):
+        for name in self.server_gradient_dict:
+            self.server_gradient_dict[name] = 0
+
+    def aggregate_gradients(self, gradients_list):
+        for g in gradients_list:
+            for name in g:
+                self.server_gradient_dict[name] += g[name]
+
+        gradients_list_length = len(gradients_list)
+        for name in g:
+            self.server_gradient_dict[name] /= gradients_list_length
 
     def set_dataset(self, dataloader: DataLoader) -> None:
         self.dataset = dataloader
@@ -359,6 +395,11 @@ class Simulation:
                 #       gradients = client.gradients
                 #       server.aggregate_gradients(gradients)
                 #           in sync case, wait for all clients to send updates.
+
+                gradients_list = []
+                gradients_list.append(client.gradients)
+                server.clear_gradients()
+                server.aggregate_gradients(gradients_list)
 
                 self.add_event(
                     SimEvent(
