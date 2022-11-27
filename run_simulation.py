@@ -1,5 +1,7 @@
 from training_latency_eval.resnet_latency_eval import get_cfar_dataset, get_resnet_and_optimizer
 from sim.sim import Simulation, Client, Server, TrainingMode
+from matplotlib import pyplot as plt
+from icecream import ic
 
 # For instantiating ResNet model
 RESNET_CLASSES = ('plane', 'car', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck')
@@ -10,7 +12,7 @@ def run_resnet_simulation():
     # run simulation
     simulation = Simulation()
 
-    s1 = simulation.create_server(training_mode=TrainingMode.SYNC)
+    s1 = simulation.create_server(training_mode=TrainingMode.ASYNC)
     c1 = simulation.create_client()
     server: Server = simulation.actors[s1]
     simulation.online_client(c1)
@@ -21,17 +23,31 @@ def run_resnet_simulation():
 
     # Assign dataset
     # TODO: Handle padding, this must be multiple of batchsize 
-    cfar_data = get_cfar_dataset(trainset_size=16)
+    cfar_data = get_cfar_dataset(trainset_size=200)
     train_dataset = cfar_data[0]['train']
     print("DEBUG")
     print(len(train_dataset))
-    server.set_dataset(train_dataset)
+    server.set_train_dataset(train_dataset)
 
     # Assign model
     resnet, _, _, _= get_resnet_and_optimizer(RESNET_CLASSES)
     server.set_model(resnet)
 
     simulation.run()
+
+    # Plot losses
+    losses = simulation.actors[s1].export_all_losses()
+
+    x_vals = [i[0] for i in losses]
+    y_vals = [i[1] for i in losses]
+
+    plt.plot(x_vals, y_vals)
+    plt.xlabel("Simulated time (s)")
+    plt.ylabel("Traiing loss")
+    plt.title("Training losses of all client models")
+    plt.show()
+
+    return simulation
 
 if __name__ == "__main__":
 

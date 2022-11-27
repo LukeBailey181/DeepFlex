@@ -2,12 +2,13 @@ from __future__ import annotations
 import copy
 from dataclasses import dataclass, field
 from enum import Enum, unique
-from typing import List, Set, Tuple
+from typing import List, Set, Tuple, Optional
 from queue import PriorityQueue
 from torch.utils.data import DataLoader
 import torch.nn as nn
 import torch.optim as optim
 from collections import defaultdict
+import torch
 
 from icecream import ic
 
@@ -66,20 +67,19 @@ class Client(Actor):
         self.model = copy.deepcopy(global_model)
         self.criterion = nn.CrossEntropyLoss()
         self.optimizer = optim.SGD(self.model.parameters(), lr=0.001, momentum=0.9)
+        self.optimizer.zero_grad()
 
-    def run_training(self, batch):
+    def run_training(self, batch) -> float:
         # TODO: integrate training
         inputs, labels = batch
-
-        # zero the parameter gradients
-        self.optimizer.zero_grad()
 
         # forward + backward + optimize
         outputs = self.model(inputs)
         loss = self.criterion(outputs, labels)
         loss.backward()
         self.update_gradients()
-        pass
+
+        return loss.item()
 
     def clear_gradients(self):
         for name in self.gradients:
@@ -102,16 +102,20 @@ class Server(Actor):
         self.mode: TrainingMode = TrainingMode.SYNC
 
         self.global_model = None
+        self.global_optimizer = None
         self.client_updates = {}
+        self.client_losses = defaultdict(list)
         self.client_staleness_threshold = 5
         self.is_busy: bool = False
 
         self.current_epoch = 0
         self.target_epoch = 10
 
-        # Dataset and iterator
-        self.dataset = None
-        self.dataset_iter = None
+        # Datasets 
+        self.train_dataset = None
+        self.train_dataset_iter = None
+        self.test_dataset = None
+
         self.server_gradient_dict = defaultdict(lambda: 0)
 
     def sync_model_to_client(self, client: Client):
@@ -134,28 +138,67 @@ class Server(Actor):
         for name, w in self.global_model.named_parameters():
             self.global_model.named_parameters[name] += self.server_gradient_dict[name]
 
+    def set_train_dataset(self, dataloader: DataLoader) -> None:
+        self.train_dataset = dataloader
+        self.train_dataset_iter = iter(dataloader)
 
-    def set_dataset(self, dataloader: DataLoader) -> None:
-        self.dataset = dataloader
-        self.dataset_iter = iter(dataloader)
+    def set_test_dataset(self, dataloader: DataLoader) -> None:
+        self.test_dataset = dataloader
 
     def set_model(self, model) -> None:
         self.global_model = model
+        # TODO: Don't hardcode hyperparams
+        self.global_optimizer = optim.SGD(
+            self.global_model.parameters(), 
+            lr=0.001, 
+            momentum=0.9
+        )
 
     def get_next_batch(self):
 
         try:
-            batch = next(self.dataset_iter)
+            batch = next(self.train_dataset_iter)
             return batch
         except StopIteration:
             if self.current_epoch < self.target_epoch:
                 # reset iterator if target epoch not reached
                 # TODO: replace this with convergence metric
                 self.current_epoch += 1
-                self.dataset_iter = iter(self.dataset)
+                self.train_dataset_iter = iter(self.train_dataset)
                 return self.get_next_batch()
 
         return None
+
+    def evaluate_global_model(self) -> Optional[float]:
+
+        if self.test_dataset is None:
+            print("ABORT EVALUATION - No test dataset")
+            return 
+
+        model = self.global_model
+        model.eval()
+        total_correct = 0
+        total_example = 0 
+        with torch.no_grad:
+            for batch in self.test_dataset:
+                inputs, labels = batch 
+                outputs = model(inputs)
+                _, preds = torch.max(outputs, 1)
+                total_correct += (labels == preds).sum().item()
+                total_example += inputs.size(0)
+
+        return total_correct / total_example
+
+    def export_all_losses(self):
+        # Return list of loss tupples of form (time, loss, client_id)
+        losses = []
+        for client_id, client_losses in self.client_losses.items():
+            for (time, loss) in client_losses:
+                losses.append((time, loss, client_id))
+
+        losses = sorted(losses, key = lambda x: x[0])
+
+        return losses
 
 
 @dataclass
@@ -434,7 +477,10 @@ class Simulation:
                     )
                     return
 
-                client.run_training(batch)
+                loss = client.run_training(batch)
+                server.client_losses[client.id].append(
+                    [self.current_time + client.training_time, loss]
+                )
 
                 self.add_event(
                     SimEvent(
@@ -520,9 +566,17 @@ class Simulation:
                 #       server.aggregate_gradients(gradients)
                 #           in sync case, wait for all clients to send updates.
 
-                gradients_list = []
-                gradients_list.append(client.gradients)
-                server.clear_gradients()
+
+                #gradients_list = []
+                #gradients_list.append(client.gradients)
+                #server.clear_gradients()
+
+                # Training for async
+                if (self.scheduler.servers[server.id].mode == TrainingMode.ASYNC):
+                    param_zip = zip(client.model.parameters(), server.global_model.parameters())
+                    for client_param, global_param in param_zip:
+                        global_param.grad = client_param.grad
+                    server.global_optimizer.step()
 
                 server_info = self.scheduler.servers[server.id]
                 if server_info.mode == TrainingMode.SYNC:
