@@ -562,7 +562,7 @@ class Simulation:
                             # client is still online
                             self.add_event(
                                 SimEvent(
-                                    time=self.current_time + server.aggregation_time,
+                                    time=self.current_time,
                                     type=SET.SERVER_CLIENT_SYNC_START,
                                     origin=server.id,
                                     target=client.id,
