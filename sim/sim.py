@@ -100,7 +100,6 @@ class Server(Actor):
         self.mode: TrainingMode = TrainingMode.SYNC
 
         self.global_model = None
-        self.assigned_clients: Set[Client] = set()
         self.client_updates = {}
         self.client_staleness_threshold = 5
         self.is_busy: bool = False
@@ -112,15 +111,6 @@ class Server(Actor):
         self.dataset = None
         self.dataset_iter = None
         self.server_gradient_dict = defaultdict(lambda: 0)
-
-    # TODO: redo actions for server
-    def assign_client(self, client: Client) -> None:
-        client.assigned_server = self
-        self.assigned_clients.add(client)
-
-    def remove_client(self, client: Client) -> None:
-        client.assigned_server = None
-        self.assigned_clients.remove(client)
 
     def sync_model_to_client(self, client: Client):
         client.sync_model(self.global_model)
@@ -171,7 +161,6 @@ class ServerInfo:
 class Scheduler(Actor):
     def __init__(self, sim: Simulation) -> None:
         super().__init__(sim, category="Category")
-        self.clients = {}
         self.servers: dict[int, ServerInfo] = {}
         self.online_clients = set()
         self.available_clients = set()
@@ -181,16 +170,18 @@ class Scheduler(Actor):
         self.available_clients.add(client.id)
 
     def offline_client(self, client: Client):
-        self.servers[client.assigned_server].client_ids.add(client.id)
+        self.servers[client.assigned_server.id].client_ids.add(client.id)
         self.available_clients.remove(client.id)
         self.online_clients.remove(client.id)
 
     def assign_client_to_server(self, client: Client, server: Server):
         self.servers[server.id].client_ids.add(client.id)
+        client.assigned_server = server
         self.available_clients.remove(client.id)
 
     def unassign_client(self, client: Client):
         self.servers[client.assigned_server.id].client_ids.remove(client.id)
+        client.assigned_server = None
         self.available_clients.add(client.id)
 
     def register_server(self, server: Server, mode: TrainingMode):
@@ -214,7 +205,7 @@ class Scheduler(Actor):
             )
 
         # reset list of updates received
-        server_info.updates.clear() 
+        server_info.updates.clear()
 
     def check_server_aggregation_readiness(self, server_id: int):
         server_info = self.servers[server_id]
