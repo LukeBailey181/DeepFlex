@@ -105,8 +105,11 @@ class Server(Actor):
         self.global_optimizer = None
         self.client_updates = {}
         self.client_losses = defaultdict(list)
+        self.epoch_losses = defaultdict(lambda:0)
+
         self.client_staleness_threshold = 5
         self.is_busy: bool = False
+        self.current_batch = False
 
         self.current_epoch = 0
         self.target_epoch = 10
@@ -156,14 +159,19 @@ class Server(Actor):
 
     def get_next_batch(self):
 
+        if (self.current_batch % 100 == 0):
+            print(f"Batch {self.current_batch}")
+
         try:
             batch = next(self.train_dataset_iter)
+            self.current_batch += 1
             return batch
         except StopIteration:
             if self.current_epoch < self.target_epoch:
                 # reset iterator if target epoch not reached
                 # TODO: replace this with convergence metric
                 self.current_epoch += 1
+                self.current_batch = 0
                 self.train_dataset_iter = iter(self.train_dataset)
                 return self.get_next_batch()
 
@@ -193,7 +201,7 @@ class Server(Actor):
         # Return list of loss tupples of form (time, loss, client_id)
         losses = []
         for client_id, client_losses in self.client_losses.items():
-            for (time, loss) in client_losses:
+            for (time, loss, epoch) in client_losses:
                 losses.append((time, loss, client_id))
 
         losses = sorted(losses, key = lambda x: x[0])
@@ -381,7 +389,7 @@ class Simulation:
         return self.actors[event.origin]
 
     def process_event(self, event: SimEvent, **kwargs) -> None:
-        ic(event)
+        #ic(event)
 
         match event.type:
 
@@ -479,8 +487,9 @@ class Simulation:
 
                 loss = client.run_training(batch)
                 server.client_losses[client.id].append(
-                    [self.current_time + client.training_time, loss]
+                    [self.current_time + client.training_time, loss, server.current_epoch]
                 )
+                server.epoch_losses[server.current_epoch] += loss
 
                 self.add_event(
                     SimEvent(
@@ -657,7 +666,7 @@ class Simulation:
             # update to next time
             self.current_time = max(self.current_time, event.time)
 
-            print(f"Processing event {event.type} at time {event.time}")
+            #print(f"Processing event {event.type} at time {event.time}")
             self.process_event(event)
 
         print(f"Simulation finished running at time {self.current_time}")

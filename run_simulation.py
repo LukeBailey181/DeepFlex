@@ -19,13 +19,15 @@ def run_resnet_simulation():
     simulation.print_actors()
     simulation.assign_client_to_server(client_id=c1, server_id=s1)
     # Default value is 100
-    simulation.time_limit = 8000
+    simulation.time_limit = 800000
 
     # Assign dataset
     # TODO: Handle padding, this must be multiple of batchsize 
-    cfar_data = get_cfar_dataset(trainset_size=200)
+    #cfar_data = get_cfar_dataset(trainset_size=200)
+    cfar_data = get_cfar_dataset(5000)
+    #cfar_data = get_cfar_dataset()
     train_dataset = cfar_data[0]['train']
-    print("DEBUG")
+    print("Number of minibatches")
     print(len(train_dataset))
     server.set_train_dataset(train_dataset)
 
@@ -45,6 +47,18 @@ def run_resnet_simulation():
     plt.xlabel("Simulated time (s)")
     plt.ylabel("Traiing loss")
     plt.title("Training losses of all client models")
+    plt.show()
+
+    epoch_losses = simulation.actors[s1].epoch_losses
+    x_vals, y_vals = [], []
+    for epoch, loss in epoch_losses.items():
+        x_vals.append(epoch)
+        y_vals.append(loss)
+
+    plt.plot(x_vals, y_vals)
+    plt.xlabel("Epoch")
+    plt.ylabel("Traiing loss")
+    plt.title("Training losses of all clients per epoch")
     plt.show()
 
     return simulation

@@ -16,7 +16,7 @@ import copy
 from collections import defaultdict
 
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-RESNET_BATCH_SIZE = 4
+RESNET_BATCH_SIZE = 64
 
 def train_resnet(
     model, 
@@ -125,7 +125,7 @@ def get_cfar_dataset(trainset_size=None):
         trainset = [trainset[i] for i in range(trainset_size)]
 
     trainloader = torch.utils.data.DataLoader(trainset, batch_size=batch_size,
-                                            shuffle=True, num_workers=2)
+                                            shuffle=True, num_workers=2, drop_last=True)
 
     testset = torchvision.datasets.CIFAR10(root='./data', train=False,
                                         download=True, transform=transform)
