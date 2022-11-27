@@ -332,113 +332,6 @@ class Simulation:
                     )
                 )
 
-            case SET.CLIENT_REQUEST_AGGREGATION:
-                # Client requests aggregation from server
-                client, server = self.client_server_from_event(event)
-
-                defer_event = SimEvent(
-                    time=self.current_time,
-                    type=SET.SERVER_DEFER_CLIENT_REQUEST,
-                    origin=server.id,
-                    target=client.id,
-                )
-
-                start_event = SimEvent(
-                    time=self.current_time,
-                    type=SET.SERVER_CLIENT_AGGREGATION_START,
-                    origin=server.id,
-                    target=client.id,
-                )
-
-                self.add_event(defer_event if server.is_busy else start_event)
-
-            case SET.SERVER_DEFER_CLIENT_REQUEST:
-                # Server defers aggregation requests
-                server, client = self.server_client_from_event(event)
-
-                if client.staleness < server.client_staleness_threshold:
-                    # client continues training if staleness not exceeded
-                    self.add_event(
-                        SimEvent(
-                            time=self.current_time,
-                            type=SET.CLIENT_TRAINING_START,
-                            origin=client.id,
-                            target=server.id,
-                        )
-                    )
-
-                else:
-                    # client training blocked until aggregation complete
-                    self.add_event(
-                        SimEvent(
-                            # TODO: make retry time per client
-                            time=self.current_time + 1,
-                            type=SET.CLIENT_REQUEST_AGGREGATION,
-                            origin=client.id,
-                            target=server.id,
-                        )
-                    )
-
-            case SET.SERVER_CLIENT_AGGREGATION_START:
-                server, client = self.server_client_from_event(event)
-                server.is_busy = True
-
-                # TODO: receive client update, perform aggregation
-
-                # TODO: Async
-                #       gradients = client.gradients
-                #       server.aggregate_gradients(gradients)
-                #           in the server, store aggregated gradients, this is only called once.
-                #
-                # TODO: Sync
-                #       gradients = client.gradients
-                #       server.aggregate_gradients(gradients)
-                #           in sync case, wait for all clients to send updates.
-
-                gradients_list = []
-                gradients_list.append(client.gradients)
-                server.clear_gradients()
-                server.aggregate_gradients(gradients_list)
-
-                self.add_event(
-                    SimEvent(
-                        time=self.current_time + server.aggregation_time,
-                        type=SET.SERVER_CLIENT_AGGREGATION_END,
-                        origin=server.id,
-                        target=client.id,
-                    )
-                )
-
-            case SET.SERVER_CLIENT_AGGREGATION_END:
-                # After aggregation, make client available if training is done,
-                # otherwise synchronize and continue.
-                server, client = self.server_client_from_event(event)
-
-                # TODO:
-                #       server.update_model()
-                #       uses stored aggregated gradients
-
-                if client.task_complete:
-                    self.add_event(
-                        SimEvent(
-                            time=self.current_time,
-                            type=SET.CLIENT_AVAILABLE,
-                            origin=client.id,
-                            target=server.id,
-                        )
-                    )
-
-                else:
-                    if client.id in self.online_clients:
-                        self.add_event(
-                            SimEvent(
-                                time=self.current_time + server.aggregation_time,
-                                type=SET.SERVER_CLIENT_SYNC_START,
-                                origin=server.id,
-                                target=client.id,
-                            )
-                        )
-
             case SET.SERVER_CLIENT_SYNC_START:
                 server, client = self.server_client_from_event(event)
 
@@ -509,6 +402,113 @@ class Simulation:
                         target=server.id,
                     )
                 )
+
+            case SET.CLIENT_REQUEST_AGGREGATION:
+                # Client requests aggregation from server
+                client, server = self.client_server_from_event(event)
+
+                defer_event = SimEvent(
+                    time=self.current_time,
+                    type=SET.SERVER_DEFER_CLIENT_REQUEST,
+                    origin=server.id,
+                    target=client.id,
+                )
+
+                start_event = SimEvent(
+                    time=self.current_time,
+                    type=SET.SERVER_CLIENT_AGGREGATION_START,
+                    origin=server.id,
+                    target=client.id,
+                )
+
+                self.add_event(defer_event if server.is_busy else start_event)
+
+            case SET.SERVER_DEFER_CLIENT_REQUEST:
+                # Server defers aggregation requests
+                server, client = self.server_client_from_event(event)
+
+                if client.staleness < server.client_staleness_threshold:
+                    # client continues training if staleness not exceeded
+                    self.add_event(
+                        SimEvent(
+                            time=self.current_time,
+                            type=SET.CLIENT_TRAINING_START,
+                            origin=client.id,
+                            target=server.id,
+                        )
+                    )
+
+                else:
+                    # client training blocked until aggregation complete
+                    self.add_event(
+                        SimEvent(
+                            # TODO: make retry time per client
+                            time=self.current_time + 1,
+                            type=SET.CLIENT_REQUEST_AGGREGATION,
+                            origin=client.id,
+                            target=server.id,
+                        )
+                    )
+
+            case SET.SERVER_CLIENT_AGGREGATION_START:
+                server, client = self.server_client_from_event(event)
+                server.is_busy = True
+
+                # TODO: receive client update, perform aggregation
+
+                # TODO: Async
+                #       gradients = client.gradients
+                #       server.aggregate_gradients(gradients)
+                #           in the server, store aggregated gradients, this is only called once.
+                #
+                # TODO: Sync
+                #       gradients = client.gradients
+                #       server.aggregate_gradients(gradients)
+                #           in sync case, wait for all clients to send updates.
+
+                gradients_list = []
+                gradients_list.append(client.gradients)
+                server.clear_gradients()
+                # server.aggregate_gradients(gradients_list)
+
+                self.add_event(
+                    SimEvent(
+                        time=self.current_time + server.aggregation_time,
+                        type=SET.SERVER_CLIENT_AGGREGATION_END,
+                        origin=server.id,
+                        target=client.id,
+                    )
+                )
+
+            case SET.SERVER_CLIENT_AGGREGATION_END:
+                # After aggregation, make client available if training is done,
+                # otherwise synchronize and continue.
+                server, client = self.server_client_from_event(event)
+
+                # TODO:
+                #       server.update_model()
+                #       uses stored aggregated gradients
+
+                if client.task_complete:
+                    self.add_event(
+                        SimEvent(
+                            time=self.current_time,
+                            type=SET.CLIENT_AVAILABLE,
+                            origin=client.id,
+                            target=server.id,
+                        )
+                    )
+
+                else:
+                    if client.id in self.online_clients:
+                        self.add_event(
+                            SimEvent(
+                                time=self.current_time + server.aggregation_time,
+                                type=SET.SERVER_CLIENT_SYNC_START,
+                                origin=server.id,
+                                target=client.id,
+                            )
+                        )
 
             case _:
                 print(f"Handler for event type {event.type} not implemented!")
