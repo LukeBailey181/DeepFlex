@@ -1,4 +1,5 @@
 from __future__ import annotations
+from dataclasses import dataclass, field
 from enum import Enum, unique
 from typing import List, Set, Tuple
 from queue import PriorityQueue
@@ -160,6 +161,66 @@ class Server(Actor):
         return None
 
 
+@dataclass
+class ServerInfo:
+    mode: TrainingMode = field(default=TrainingMode.SYNC)
+    client_ids: set[int] = field(default=set())
+    updates: set[int] = field(default=set())
+
+
+class Scheduler(Actor):
+    def __init__(self, sim: Simulation) -> None:
+        super().__init__(sim, category="Category")
+        self.clients = {}
+        self.servers: dict[int, ServerInfo] = {}
+        self.online_clients = set()
+        self.available_clients = set()
+
+    def online_client(self, client: Client):
+        self.online_clients.add(client.id)
+        self.available_clients.add(client.id)
+
+    def offline_client(self, client: Client):
+        self.servers[client.assigned_server].client_ids.add(client.id)
+        self.available_clients.remove(client.id)
+        self.online_clients.remove(client.id)
+
+    def assign_client_to_server(self, client: Client, server: Server):
+        self.servers[server.id].client_ids.add(client.id)
+        self.available_clients.remove(client.id)
+
+    def unassign_client(self, client: Client):
+        self.servers[client.assigned_server.id].client_ids.remove(client.id)
+        self.available_clients.add(client.id)
+
+    def register_server(self, server: Server, mode: TrainingMode):
+        self.servers[server.id] = ServerInfo(mode=mode)
+
+    def unregister_server(self, server_id: int):
+        del self.servers[server_id]
+
+    def broadcast_sync_start(self, server_id: int):
+        sim = self.sim
+
+        server_info = self.servers[server_id]
+        for client_id in server_info.client_ids:
+            sim.add_event(
+                SimEvent(
+                    time=sim.now(),
+                    type=SET.SERVER_CLIENT_SYNC_START,
+                    origin=server_id,
+                    target=client_id,
+                )
+            )
+
+        # reset list of updates received
+        server_info.updates = []
+
+    def check_server_aggregation_readiness(self, server_id: int):
+        server_info = self.servers[server_id]
+        return len(server_info.updates) == len(server_info.client_ids)
+
+
 class Simulation:
     def __init__(self) -> None:
         self.paused: bool = False
@@ -173,6 +234,11 @@ class Simulation:
 
         self.online_clients: set[int] = set()
         self.available_clients: set[int] = set()
+
+        # Schduler is the first actor in the simulation
+        scheduler = Scheduler(self)
+        self.scheduler = scheduler
+        self.actors[scheduler.id] = scheduler
 
     def _validate_time(self, t: int, msg: str):
         time = t if t else self.now()
@@ -289,22 +355,15 @@ class Simulation:
 
             case SET.CLIENT_ONLINE:
                 client: Client = self.actors[event.origin]
-
-                self.online_clients.add(client.id)
-                self.available_clients.add(client.id)
+                self.scheduler.online_client(client)
 
             case SET.CLIENT_OFFLINE:
                 client: Client = self.actors[event.origin]
-
-                client.assigned_server.remove_client(client)
-                self.available_clients.remove(client.id)
-                self.online_clients.remove(client.id)
+                self.scheduler.offline_client(client)
 
             case SET.CLIENT_AVAILABLE:
-                client, server = self.client_server_from_event(event)
-
-                client.assigned_server.remove_client(client)
-                self.available_clients.add(client.id)
+                client: Client = self.actors[event.origin]
+                self.scheduler.unassign_client(client)
 
             case SET.CLIENT_CLAIMED:
                 # Server claims client and attempts synchronization
@@ -469,7 +528,10 @@ class Simulation:
                 gradients_list = []
                 gradients_list.append(client.gradients)
                 server.clear_gradients()
-                # server.aggregate_gradients(gradients_list)
+
+                server_info = self.scheduler.servers[server.id]
+                if server_info.mode == TrainingMode.SYNC:
+                    server_info.updates.add(client.id)
 
                 self.add_event(
                     SimEvent(
@@ -500,15 +562,24 @@ class Simulation:
                     )
 
                 else:
-                    if client.id in self.online_clients:
-                        self.add_event(
-                            SimEvent(
-                                time=self.current_time + server.aggregation_time,
-                                type=SET.SERVER_CLIENT_SYNC_START,
-                                origin=server.id,
-                                target=client.id,
+                    if self.scheduler.servers[server.id].mode == TrainingMode.SYNC:
+                        # responsible server is in sync training mode
+                        if self.scheduler.check_server_aggregation_readiness(server.id):
+                            # server is ready for full aggregation
+                            self.scheduler.broadcast_sync_start(server.id)
+
+                    else:
+                        # responsible server is in async training mode
+                        if client.id in self.online_clients:
+                            # client is still online
+                            self.add_event(
+                                SimEvent(
+                                    time=self.current_time + server.aggregation_time,
+                                    type=SET.SERVER_CLIENT_SYNC_START,
+                                    origin=server.id,
+                                    target=client.id,
+                                )
                             )
-                        )
 
             case _:
                 print(f"Handler for event type {event.type} not implemented!")
