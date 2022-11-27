@@ -57,13 +57,12 @@ class Client(Actor):
         self.model = None
         self.data = {}
         self.gradients = defaultdict(lambda: 0)
-
-        self.criterion = nn.CrossEntropyLoss()
-        self.optimizer = optim.SGD(self.model.parameters(), lr=0.001, momentum=0.9)
         self.staleness = 0
 
     def sync_model(self, global_model) -> None:
         self.model = global_model
+        self.criterion = nn.CrossEntropyLoss()
+        self.optimizer = optim.SGD(global_model.parameters(), lr=0.001, momentum=0.9)
 
     def run_training(self, batch):
         # TODO: integrate training
