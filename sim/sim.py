@@ -272,9 +272,10 @@ class Simulation:
         self.actors[new_client.id] = new_client
         return new_client.id
 
-    def create_server(self, t=None):
+    def create_server(self, training_mode=TrainingMode.SYNC, t=None):
         new_server = Server(self)
         self.actors[new_server.id] = new_server
+        self.scheduler.register_server(new_server, training_mode)
         return new_server.id
 
     def online_client(self, client_id, t=None):
