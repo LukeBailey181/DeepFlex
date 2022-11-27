@@ -214,7 +214,7 @@ class Scheduler(Actor):
             )
 
         # reset list of updates received
-        server_info.updates = []
+        server_info.updates.clear() 
 
     def check_server_aggregation_readiness(self, server_id: int):
         server_info = self.servers[server_id]
