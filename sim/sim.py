@@ -1,4 +1,5 @@
 from __future__ import annotations
+import copy
 from dataclasses import dataclass, field
 from enum import Enum, unique
 from typing import List, Set, Tuple
@@ -61,9 +62,10 @@ class Client(Actor):
         self.staleness = 0
 
     def sync_model(self, global_model) -> None:
-        self.model = global_model
+        # deepcopy to detach from global model
+        self.model = copy.deepcopy(global_model)
         self.criterion = nn.CrossEntropyLoss()
-        self.optimizer = optim.SGD(global_model.parameters(), lr=0.001, momentum=0.9)
+        self.optimizer = optim.SGD(self.model.parameters(), lr=0.001, momentum=0.9)
 
     def run_training(self, batch):
         # TODO: integrate training
@@ -124,9 +126,14 @@ class Server(Actor):
             for name in g:
                 self.server_gradient_dict[name] += g[name]
 
+        # normalized gradient values
         gradients_list_length = len(gradients_list)
         for name in g:
             self.server_gradient_dict[name] /= gradients_list_length
+
+        for name, w in self.global_model.named_parameters():
+            self.global_model.named_parameters[name] += self.server_gradient_dict[name]
+
 
     def set_dataset(self, dataloader: DataLoader) -> None:
         self.dataset = dataloader
