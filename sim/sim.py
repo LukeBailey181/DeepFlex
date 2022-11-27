@@ -164,8 +164,8 @@ class Server(Actor):
 @dataclass
 class ServerInfo:
     mode: TrainingMode = field(default=TrainingMode.SYNC)
-    client_ids: set[int] = field(default=set())
-    updates: set[int] = field(default=set())
+    client_ids: set[int] = field(default_factory=set)
+    updates: set[int] = field(default_factory=set)
 
 
 class Scheduler(Actor):
