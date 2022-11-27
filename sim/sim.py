@@ -232,9 +232,6 @@ class Simulation:
         self.actor_id_counter: int = 0
         self.actors: dict[int, Actor] = {}
 
-        self.online_clients: set[int] = set()
-        self.available_clients: set[int] = set()
-
         # Schduler is the first actor in the simulation
         scheduler = Scheduler(self)
         self.scheduler = scheduler
@@ -318,7 +315,7 @@ class Simulation:
         self.add_event(
             SimEvent(
                 time=time,
-                type=SET.CLIENT_CLAIMED,
+                type=SET.SERVER_CLAIM_CLIENT,
                 origin=server_id,
                 target=client_id,
             )
@@ -366,22 +363,21 @@ class Simulation:
                 client: Client = self.actors[event.origin]
                 self.scheduler.unassign_client(client)
 
-            case SET.CLIENT_CLAIMED:
+            case SET.SERVER_CLAIM_CLIENT:
                 # Server claims client and attempts synchronization
                 server, client = self.server_client_from_event(event)
 
-                if client.id not in self.online_clients:
+                if client.id not in self.scheduler.online_clients:
                     print(
                         f"Attempting to assign offline client {client.id} to {server.id}!"
                     )
 
-                if client.id not in self.available_clients:
+                if client.id not in self.scheduler.available_clients:
                     print(
                         f"Attempting to assign unavailable client {client.id} to {server.id}!"
                     )
 
-                server.assign_client(client)
-                self.available_clients.remove(client.id)
+                self.scheduler.assign_client_to_server(client, server)
 
                 self.add_event(
                     SimEvent(
@@ -571,7 +567,7 @@ class Simulation:
 
                     else:
                         # responsible server is in async training mode
-                        if client.id in self.online_clients:
+                        if client.id in self.scheduler.online_clients:
                             # client is still online
                             self.add_event(
                                 SimEvent(

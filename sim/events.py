@@ -12,31 +12,23 @@ class SimEventType(Enum):
     def __str__(self):
         return str(self.name)
 
-    # NOTE: most events are client-focused, since we're only working with one
-    # server at the moment. Once we have multiple parameter servers, we can
-    # include events for interactions between servers (and possibly scheduler)
-
     # Client availability
     CLIENT_ONLINE = auto()      # Client is newly online
     CLIENT_OFFLINE = auto()     # Client is taken offline
     CLIENT_AVAILABLE = auto()   # Client is now available after finishing task
-    CLIENT_CLAIMED = auto()     # Client is claimed by a server
 
-    # Client aggregation and synchronization events
-    CLIENT_REQUEST_AGGREGATION = auto() #
-    SERVER_DEFER_CLIENT_REQUEST = auto()    #
-    SERVER_CLIENT_AGGREGATION_START = auto()   #
-    SERVER_CLIENT_AGGREGATION_END = auto()     #
+    # Server activities
+    SERVER_CLAIM_CLIENT = auto()
+    SERVER_DEFER_CLIENT_REQUEST = auto()
+    SERVER_CLIENT_AGGREGATION_START = auto()
+    SERVER_CLIENT_AGGREGATION_END = auto()
+    SERVER_CLIENT_SYNC_START = auto()
+    SERVER_CLIENT_SYNC_END = auto()
 
-    SERVER_CLIENT_SYNC_START = auto()   #
-    SERVER_CLIENT_SYNC_END = auto()     #
-
-    # Client training events
+    # Client activities
     CLIENT_TRAINING_START = auto()
     CLIENT_TRAINING_END = auto()
-
-    # Server events
-    SERVER_CLAIM_CLIENT = auto()
+    CLIENT_REQUEST_AGGREGATION = auto()
 
     # Simulation control events
     SIM_PAUSE = auto()
