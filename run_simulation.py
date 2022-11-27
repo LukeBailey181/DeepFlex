@@ -20,7 +20,8 @@ def run_resnet_simulation():
     simulation.time_limit = 8000
 
     # Assign dataset
-    cfar_data = get_cfar_dataset(trainset_size=1)
+    # TODO: Handle padding, this must be multiple of batchsize 
+    cfar_data = get_cfar_dataset(trainset_size=16)
     train_dataset = cfar_data[0]['train']
     print("DEBUG")
     print(len(train_dataset))
