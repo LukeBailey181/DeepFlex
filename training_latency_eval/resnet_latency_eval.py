@@ -108,15 +108,13 @@ def train_resnet(
     
     return model, timing_data
 
-def get_cfar_dataset(trainset_size=None):
+def get_cfar_dataset(trainset_size=None, batch_size=RESNET_BATCH_SIZE):
 
     # The output of torchvision datasets are PILImage images of range [0, 1]. 
     # Transform them to Tensors of normalized range [-1, 1].
     transform = transforms.Compose(
         [transforms.ToTensor(),
         transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
-
-    batch_size = RESNET_BATCH_SIZE
 
     trainset = torchvision.datasets.CIFAR10(root='./data', train=True,
                                             download=True, transform=transform)
