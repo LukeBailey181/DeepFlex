@@ -6,11 +6,11 @@ from icecream import ic
 # For instantiating ResNet model
 RESNET_CLASSES = ('plane', 'car', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck')
 
+# Number of examples, not number of batches
 TRAINSET_SIZE = 64
 TESTSET_SIZE = 64
 BATCH_SIZE = 64
 NUM_EPOCHS = 10
-
 
 def run_resnet_simulation():
 
@@ -18,11 +18,17 @@ def run_resnet_simulation():
     simulation = Simulation()
     s1 = simulation.create_server(training_mode=TrainingMode.ASYNC)
     c1 = simulation.create_client()
+    #c2 = simulation.create_client()
+
     server: Server = simulation.actors[s1]
     server.target_epoch = NUM_EPOCHS
     simulation.online_client(c1)
+    #simulation.online_client(c2)
+
     simulation.print_actors()
     simulation.assign_client_to_server(client_id=c1, server_id=s1)
+    #simulation.assign_client_to_server(client_id=c2, server_id=s1)
+
     simulation.time_limit = 800000      # Default value is 100
 
     # Assign dataset
@@ -55,7 +61,7 @@ def run_resnet_simulation():
     plt.xlabel("Simulated time (s)")
     plt.ylabel("Traiing loss")
     plt.title("Training losses of all client models")
-    plt.show()
+    plt.savefig("./loss_against_time.jpg")
 
     epoch_losses = simulation.actors[s1].epoch_losses
     x_vals, y_vals = [], []
@@ -67,7 +73,7 @@ def run_resnet_simulation():
     plt.xlabel("Epoch")
     plt.ylabel("Traiing loss")
     plt.title("Training losses of all clients per epoch")
-    plt.show()
+    plt.savefig("./loss_against_epoch.jpg")
 
     # Print model accuracy
     acc = server.evaluate_global_model()
