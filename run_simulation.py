@@ -6,35 +6,43 @@ from icecream import ic
 # For instantiating ResNet model
 RESNET_CLASSES = ('plane', 'car', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck')
 
+TRAINSET_SIZE = 64
+TESTSET_SIZE = 64
+BATCH_SIZE = 64
+NUM_EPOCHS = 10
+
+
 def run_resnet_simulation():
 
-    # Get resnet data
-    # run simulation
+    # Configure simulation
     simulation = Simulation()
-
     s1 = simulation.create_server(training_mode=TrainingMode.ASYNC)
     c1 = simulation.create_client()
     server: Server = simulation.actors[s1]
+    server.target_epoch = NUM_EPOCHS
     simulation.online_client(c1)
     simulation.print_actors()
     simulation.assign_client_to_server(client_id=c1, server_id=s1)
-    # Default value is 100
-    simulation.time_limit = 800000
+    simulation.time_limit = 800000      # Default value is 100
 
     # Assign dataset
-    # TODO: Handle padding, this must be multiple of batchsize 
-    #cfar_data = get_cfar_dataset(trainset_size=200)
-    cfar_data = get_cfar_dataset(5000)
-    #cfar_data = get_cfar_dataset()
-    train_dataset = cfar_data[0]['train']
+    cfar_datasets = get_cfar_dataset(
+        TRAINSET_SIZE,
+        TESTSET_SIZE,
+        BATCH_SIZE
+    )[0]
+    train_dataset = cfar_datasets['train']
+    test_dataset = cfar_datasets['val']
     print("Number of minibatches")
     print(len(train_dataset))
     server.set_train_dataset(train_dataset)
+    server.set_test_dataset(test_dataset)
 
     # Assign model
     resnet, _, _, _= get_resnet_and_optimizer(RESNET_CLASSES)
     server.set_model(resnet)
 
+    # Run simulation
     simulation.run()
 
     # Plot losses
@@ -60,6 +68,10 @@ def run_resnet_simulation():
     plt.ylabel("Traiing loss")
     plt.title("Training losses of all clients per epoch")
     plt.show()
+
+    # Print model accuracy
+    acc = server.evaluate_global_model()
+    print(f"Model accuracy = {acc}")
 
     return simulation
 

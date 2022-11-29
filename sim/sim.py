@@ -187,7 +187,7 @@ class Server(Actor):
         model.eval()
         total_correct = 0
         total_example = 0 
-        with torch.no_grad:
+        with torch.no_grad():
             for batch in self.test_dataset:
                 inputs, labels = batch 
                 outputs = model(inputs)
