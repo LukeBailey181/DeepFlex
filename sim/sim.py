@@ -61,10 +61,12 @@ class Client(Actor):
         self.data = {}
         self.gradients = defaultdict(lambda: 0)
         self.staleness = 0
+        self.device = "cpu"
 
     def sync_model(self, global_model) -> None:
         # deepcopy to detach from global model
         self.model = copy.deepcopy(global_model)
+        self.model.to(self.device)
         self.criterion = nn.CrossEntropyLoss()
         self.optimizer = optim.SGD(self.model.parameters(), lr=0.001, momentum=0.9)
         self.optimizer.zero_grad()
@@ -72,6 +74,8 @@ class Client(Actor):
     def run_training(self, batch) -> float:
         # TODO: integrate training
         inputs, labels = batch
+        inputs = inputs.to(self.device)
+        labels = labels.to(self.device)
 
         # forward + backward + optimize
         outputs = self.model(inputs)
