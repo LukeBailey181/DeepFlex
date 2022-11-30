@@ -81,8 +81,8 @@ def run_resnet_simulation():
     plt.savefig("./loss_against_epoch.jpg")
 
     # Print model accuracy
-    # acc = server.evaluate_global_model()
-    # # # # # # # # # print(f"Model accuracy = {acc}")
+    acc = server.evaluate_global_model()
+    print(f"Model accuracy = {acc}")
 
     return simulation
 
