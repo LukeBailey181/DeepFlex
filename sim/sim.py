@@ -393,72 +393,155 @@ class Simulation:
     def process_event(self, event: SimEvent, **kwargs) -> None:
         # ic(event)
 
-        match event.type:
+        # Simulation control events
+        if event.type == SET.SIM_PAUSE:
+            self.paused = True
 
-            # Simulation control events
-            case SET.SIM_PAUSE:
-                self.paused = True
+        elif event.type == SET.SIM_PRINT_ACTORS:
+            self.print_actors()
 
-            case SET.SIM_PRINT_ACTORS:
-                self.print_actors()
+        elif event.type == SET.CLIENT_ONLINE:
+            client: Client = self.actors[event.origin]
+            self.scheduler.online_client(client)
 
-            case SET.CLIENT_ONLINE:
-                client: Client = self.actors[event.origin]
-                self.scheduler.online_client(client)
+        elif event.type == SET.CLIENT_OFFLINE:
+            client: Client = self.actors[event.origin]
+            self.scheduler.offline_client(client)
 
-            case SET.CLIENT_OFFLINE:
-                client: Client = self.actors[event.origin]
-                self.scheduler.offline_client(client)
+        elif event.type == SET.CLIENT_AVAILABLE:
+            client: Client = self.actors[event.origin]
+            self.scheduler.unassign_client(client)
 
-            case SET.CLIENT_AVAILABLE:
-                client: Client = self.actors[event.origin]
-                self.scheduler.unassign_client(client)
+        elif event.type == SET.SERVER_CLAIM_CLIENT:
+            # Server claims client and attempts synchronization
+            server, client = self.server_client_from_event(event)
 
-            case SET.SERVER_CLAIM_CLIENT:
-                # Server claims client and attempts synchronization
-                server, client = self.server_client_from_event(event)
-
-                if client.id not in self.scheduler.online_clients:
-                    print(
-                        f"Attempting to assign offline client {client.id} to {server.id}!"
-                    )
-
-                if client.id not in self.scheduler.available_clients:
-                    print(
-                        f"Attempting to assign unavailable client {client.id} to {server.id}!"
-                    )
-
-                self.scheduler.assign_client_to_server(client, server)
-
-                self.add_event(
-                    SimEvent(
-                        time=self.now(),
-                        type=SET.SERVER_CLIENT_SYNC_START,
-                        origin=server.id,
-                        target=client.id,
-                    )
+            if client.id not in self.scheduler.online_clients:
+                print(
+                    f"Attempting to assign offline client {client.id} to {server.id}!"
                 )
 
-            case SET.SERVER_CLIENT_SYNC_START:
-                server, client = self.server_client_from_event(event)
-
-                # Sync global model with client
-                server.sync_model_to_client(client)
-
-                self.add_event(
-                    SimEvent(
-                        time=self.current_time + server.sync_time,
-                        type=SET.SERVER_CLIENT_SYNC_END,
-                        origin=server.id,
-                        target=client.id,
-                    )
+            if client.id not in self.scheduler.available_clients:
+                print(
+                    f"Attempting to assign unavailable client {client.id} to {server.id}!"
                 )
 
-            case SET.SERVER_CLIENT_SYNC_END:
-                # Immediately start training as soon as synchronization is done.
-                server, client = self.server_client_from_event(event)
-                server.is_busy = False
+            self.scheduler.assign_client_to_server(client, server)
 
+            self.add_event(
+                SimEvent(
+                    time=self.now(),
+                    type=SET.SERVER_CLIENT_SYNC_START,
+                    origin=server.id,
+                    target=client.id,
+                )
+            )
+
+        elif event.type == SET.SERVER_CLIENT_SYNC_START:
+            server, client = self.server_client_from_event(event)
+
+            # Sync global model with client
+            server.sync_model_to_client(client)
+
+            self.add_event(
+                SimEvent(
+                    time=self.current_time + server.sync_time,
+                    type=SET.SERVER_CLIENT_SYNC_END,
+                    origin=server.id,
+                    target=client.id,
+                )
+            )
+
+        elif event.type == SET.SERVER_CLIENT_SYNC_END:
+            # Immediately start training as soon as synchronization is done.
+            server, client = self.server_client_from_event(event)
+            server.is_busy = False
+
+            self.add_event(
+                SimEvent(
+                    time=self.current_time,
+                    type=SET.CLIENT_TRAINING_START,
+                    origin=client.id,
+                    target=server.id,
+                )
+            )
+
+        elif event.type == SET.CLIENT_TRAINING_START:
+            client, server = self.client_server_from_event(event)
+
+            # TODO: at this point, model state should be caught up, check this is the case
+            # TODO: Make sure syncing model has worked
+            batch = server.get_next_batch()
+
+            if batch is None:
+                # no more data available
+                self.add_event(
+                    SimEvent(
+                        time=self.current_time,
+                        type=SET.CLIENT_AVAILABLE,
+                        origin=client.id,
+                        target=server.id,
+                    )
+                )
+                return
+
+            loss = client.run_training(batch)
+            server.client_losses[client.id].append(
+                [
+                    self.current_time + client.training_time,
+                    loss,
+                    server.current_epoch,
+                ]
+            )
+            server.epoch_losses[server.current_epoch] += loss
+
+            self.add_event(
+                SimEvent(
+                    time=self.current_time + client.training_time,
+                    type=SET.CLIENT_TRAINING_END,
+                    origin=client.id,
+                    target=server.id,
+                )
+            )
+
+        elif event.type == SET.CLIENT_TRAINING_END:
+            client, server = self.client_server_from_event(event)
+
+            self.add_event(
+                SimEvent(
+                    time=self.current_time,
+                    type=SET.CLIENT_REQUEST_AGGREGATION,
+                    origin=client.id,
+                    target=server.id,
+                )
+            )
+
+        elif event.type == SET.CLIENT_REQUEST_AGGREGATION:
+            # Client requests aggregation from server
+            client, server = self.client_server_from_event(event)
+
+            defer_event = SimEvent(
+                time=self.current_time,
+                type=SET.SERVER_DEFER_CLIENT_REQUEST,
+                origin=server.id,
+                target=client.id,
+            )
+
+            start_event = SimEvent(
+                time=self.current_time,
+                type=SET.SERVER_CLIENT_AGGREGATION_START,
+                origin=server.id,
+                target=client.id,
+            )
+
+            self.add_event(defer_event if server.is_busy else start_event)
+
+        elif event.type == SET.SERVER_DEFER_CLIENT_REQUEST:
+            # Server defers aggregation requests
+            server, client = self.server_client_from_event(event)
+
+            if client.staleness < server.client_staleness_threshold:
+                # client continues training if staleness not exceeded
                 self.add_event(
                     SimEvent(
                         time=self.current_time,
@@ -468,188 +551,104 @@ class Simulation:
                     )
                 )
 
-            case SET.CLIENT_TRAINING_START:
-                client, server = self.client_server_from_event(event)
-
-                # TODO: at this point, model state should be caught up, check this is the case
-                # TODO: Make sure syncing model has worked
-                batch = server.get_next_batch()
-
-                if batch is None:
-                    # no more data available
-                    self.add_event(
-                        SimEvent(
-                            time=self.current_time,
-                            type=SET.CLIENT_AVAILABLE,
-                            origin=client.id,
-                            target=server.id,
-                        )
-                    )
-                    return
-
-                loss = client.run_training(batch)
-                server.client_losses[client.id].append(
-                    [
-                        self.current_time + client.training_time,
-                        loss,
-                        server.current_epoch,
-                    ]
-                )
-                server.epoch_losses[server.current_epoch] += loss
-
+            else:
+                # client training blocked until aggregation complete
                 self.add_event(
                     SimEvent(
-                        time=self.current_time + client.training_time,
-                        type=SET.CLIENT_TRAINING_END,
-                        origin=client.id,
-                        target=server.id,
-                    )
-                )
-
-            case SET.CLIENT_TRAINING_END:
-                client, server = self.client_server_from_event(event)
-
-                self.add_event(
-                    SimEvent(
-                        time=self.current_time,
+                        # TODO: make retry time per client
+                        time=self.current_time + 1,
                         type=SET.CLIENT_REQUEST_AGGREGATION,
                         origin=client.id,
                         target=server.id,
                     )
                 )
 
-            case SET.CLIENT_REQUEST_AGGREGATION:
-                # Client requests aggregation from server
-                client, server = self.client_server_from_event(event)
+        elif event.type == SET.SERVER_CLIENT_AGGREGATION_START:
+            server, client = self.server_client_from_event(event)
+            server.is_busy = True
 
-                defer_event = SimEvent(
-                    time=self.current_time,
-                    type=SET.SERVER_DEFER_CLIENT_REQUEST,
+            # TODO: receive client update, perform aggregation
+
+            # TODO: Async
+            #       gradients = client.gradients
+            #       server.aggregate_gradients(gradients)
+            #           in the server, store aggregated gradients, this is only called once.
+            #
+            # TODO: Sync
+            #       gradients = client.gradients
+            #       server.aggregate_gradients(gradients)
+            #           in sync case, wait for all clients to send updates.
+
+            # gradients_list = []
+            # gradients_list.append(client.gradients)
+            # server.clear_gradients()
+
+            # Training for async
+            if self.scheduler.servers[server.id].mode == TrainingMode.ASYNC:
+                client.model.to("cpu")
+                param_zip = zip(
+                    client.model.parameters(), server.global_model.parameters()
+                )
+                for client_param, global_param in param_zip:
+                    global_param.grad = client_param.grad
+                server.global_optimizer.step()
+
+            server_info = self.scheduler.servers[server.id]
+            if server_info.mode == TrainingMode.SYNC:
+                server_info.updates.add(client.id)
+
+            self.add_event(
+                SimEvent(
+                    time=self.current_time + server.aggregation_time,
+                    type=SET.SERVER_CLIENT_AGGREGATION_END,
                     origin=server.id,
                     target=client.id,
                 )
+            )
 
-                start_event = SimEvent(
-                    time=self.current_time,
-                    type=SET.SERVER_CLIENT_AGGREGATION_START,
-                    origin=server.id,
-                    target=client.id,
-                )
+        elif event.type == SET.SERVER_CLIENT_AGGREGATION_END:
+            # After aggregation, make client available if training is done,
+            # otherwise synchronize and continue.
+            server, client = self.server_client_from_event(event)
 
-                self.add_event(defer_event if server.is_busy else start_event)
+            # TODO:
+            #       server.update_model()
+            #       uses stored aggregated gradients
 
-            case SET.SERVER_DEFER_CLIENT_REQUEST:
-                # Server defers aggregation requests
-                server, client = self.server_client_from_event(event)
-
-                if client.staleness < server.client_staleness_threshold:
-                    # client continues training if staleness not exceeded
-                    self.add_event(
-                        SimEvent(
-                            time=self.current_time,
-                            type=SET.CLIENT_TRAINING_START,
-                            origin=client.id,
-                            target=server.id,
-                        )
-                    )
-
-                else:
-                    # client training blocked until aggregation complete
-                    self.add_event(
-                        SimEvent(
-                            # TODO: make retry time per client
-                            time=self.current_time + 1,
-                            type=SET.CLIENT_REQUEST_AGGREGATION,
-                            origin=client.id,
-                            target=server.id,
-                        )
-                    )
-
-            case SET.SERVER_CLIENT_AGGREGATION_START:
-                server, client = self.server_client_from_event(event)
-                server.is_busy = True
-
-                # TODO: receive client update, perform aggregation
-
-                # TODO: Async
-                #       gradients = client.gradients
-                #       server.aggregate_gradients(gradients)
-                #           in the server, store aggregated gradients, this is only called once.
-                #
-                # TODO: Sync
-                #       gradients = client.gradients
-                #       server.aggregate_gradients(gradients)
-                #           in sync case, wait for all clients to send updates.
-
-                # gradients_list = []
-                # gradients_list.append(client.gradients)
-                # server.clear_gradients()
-
-                # Training for async
-                if self.scheduler.servers[server.id].mode == TrainingMode.ASYNC:
-                    client.model.to("cpu")
-                    param_zip = zip(
-                        client.model.parameters(), server.global_model.parameters()
-                    )
-                    for client_param, global_param in param_zip:
-                        global_param.grad = client_param.grad
-                    server.global_optimizer.step()
-
-                server_info = self.scheduler.servers[server.id]
-                if server_info.mode == TrainingMode.SYNC:
-                    server_info.updates.add(client.id)
-
+            if client.task_complete:
                 self.add_event(
                     SimEvent(
-                        time=self.current_time + server.aggregation_time,
-                        type=SET.SERVER_CLIENT_AGGREGATION_END,
-                        origin=server.id,
-                        target=client.id,
+                        time=self.current_time,
+                        type=SET.CLIENT_AVAILABLE,
+                        origin=client.id,
+                        target=server.id,
                     )
                 )
+                return
 
-            case SET.SERVER_CLIENT_AGGREGATION_END:
-                # After aggregation, make client available if training is done,
-                # otherwise synchronize and continue.
-                server, client = self.server_client_from_event(event)
-
-                # TODO:
-                #       server.update_model()
-                #       uses stored aggregated gradients
-
-                if client.task_complete:
-                    self.add_event(
-                        SimEvent(
-                            time=self.current_time,
-                            type=SET.CLIENT_AVAILABLE,
-                            origin=client.id,
-                            target=server.id,
-                        )
-                    )
+            else:
+                if self.scheduler.servers[server.id].mode == TrainingMode.SYNC:
+                    # responsible server is in sync training mode
+                    if self.scheduler.check_server_aggregation_readiness(server.id):
+                        # server is ready for full aggregation
+                        self.scheduler.broadcast_sync_start(server.id)
 
                 else:
-                    if self.scheduler.servers[server.id].mode == TrainingMode.SYNC:
-                        # responsible server is in sync training mode
-                        if self.scheduler.check_server_aggregation_readiness(server.id):
-                            # server is ready for full aggregation
-                            self.scheduler.broadcast_sync_start(server.id)
-
-                    else:
-                        # responsible server is in async training mode
-                        if client.id in self.scheduler.online_clients:
-                            # client is still online
-                            self.add_event(
-                                SimEvent(
-                                    time=self.current_time,
-                                    type=SET.SERVER_CLIENT_SYNC_START,
-                                    origin=server.id,
-                                    target=client.id,
-                                )
+                    # responsible server is in async training mode
+                    if client.id in self.scheduler.online_clients:
+                        # client is still online
+                        self.add_event(
+                            SimEvent(
+                                time=self.current_time,
+                                type=SET.SERVER_CLIENT_SYNC_START,
+                                origin=server.id,
+                                target=client.id,
                             )
+                        )
 
-            case _:
-                print(f"Handler for event type {event.type} not implemented!")
-                ic(event)
+        else:
+            print(f"Handler for event type {event.type} not implemented!")
+            ic(event)
 
         return
 
