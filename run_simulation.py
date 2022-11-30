@@ -2,13 +2,14 @@ from training_latency_eval.resnet_latency_eval import get_cfar_dataset, get_resn
 from sim.sim import Simulation, Client, Server, TrainingMode
 from matplotlib import pyplot as plt
 from icecream import ic
+import torch
 
 # For instantiating ResNet model
 RESNET_CLASSES = ('plane', 'car', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck')
 
 # Number of examples, not number of batches
 TRAINSET_SIZE = 64
-TESTSET_SIZE = 64
+TESTSET_SIZE = 1000
 BATCH_SIZE = 64
 NUM_EPOCHS = 10
 
@@ -62,6 +63,7 @@ def run_resnet_simulation():
     plt.ylabel("Traiing loss")
     plt.title("Training losses of all client models")
     plt.savefig("./loss_against_time.jpg")
+    plt.clf()
 
     epoch_losses = simulation.actors[s1].epoch_losses
     x_vals, y_vals = [], []
@@ -76,8 +78,8 @@ def run_resnet_simulation():
     plt.savefig("./loss_against_epoch.jpg")
 
     # Print model accuracy
-    acc = server.evaluate_global_model()
-    print(f"Model accuracy = {acc}")
+    # acc = server.evaluate_global_model()
+    # # # # # # # # # print(f"Model accuracy = {acc}")
 
     return simulation
 
