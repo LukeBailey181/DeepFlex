@@ -17,6 +17,7 @@ from collections import defaultdict
 
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 RESNET_BATCH_SIZE = 64
+DATASET_SIZE = 32000
 
 def train_resnet(
     model, 
@@ -28,6 +29,8 @@ def train_resnet(
     dataset_sizes,
     num_epochs=25
 ):
+    model.to(device)
+
     since = time.time()
 
     best_model_wts = copy.deepcopy(model.state_dict())
@@ -173,7 +176,7 @@ def collect_timing_data_resnet():
 
     # Get datasset
     print("Collecting CFAR dataset")
-    dataloaders, dataset_sizes, classes = get_cfar_dataset(2000)
+    dataloaders, dataset_sizes, classes = get_cfar_dataset(DATASET_SIZE)
 
     print(len(dataloaders['train']))
 
@@ -208,7 +211,7 @@ def evaluate_resnet():
     plt.plot([i for i in range(len(epoch_0))], epoch_0)
     plt.savefig("ResNet-18_latency.png")
 
-    print(f"\nRESNET TRAINING TIME DATAPOINTS = {len(epoch_0[10:])}")
+    print(f"\nRESNET TRAINING TIME DATAPOINTS = {len(epoch_0[2:])}")
     print(f"\nRESNET MEAN TRAINING TIME VALUE = {np.array(epoch_0)[10:].mean()}")
 
 if __name__ == "__main__":
