@@ -15,18 +15,19 @@ import os
 import copy
 from collections import defaultdict
 
-DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+# DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 #DEVICE = torch.device("mps")
+DEVICE = torch.device("cpu")
 RESNET_BATCH_SIZE = 64
 DATASET_SIZE = 32000
 
 def train_resnet(
-    model, 
-    criterion, 
-    optimizer, 
-    scheduler, 
-    dataloaders, 
-    device, 
+    model,
+    criterion,
+    optimizer,
+    scheduler,
+    dataloaders,
+    device,
     dataset_sizes,
     num_epochs=25
 ):
@@ -109,12 +110,12 @@ def train_resnet(
 
     # load best model weights
     model.load_state_dict(best_model_wts)
-    
+
     return model, timing_data
 
 def get_cfar_dataset(trainset_size=None, testset_size=None, batch_size=RESNET_BATCH_SIZE):
 
-    # The output of torchvision datasets are PILImage images of range [0, 1]. 
+    # The output of torchvision datasets are PILImage images of range [0, 1].
     # Transform them to Tensors of normalized range [-1, 1].
     transform = transforms.Compose(
         [transforms.ToTensor(),
@@ -139,7 +140,7 @@ def get_cfar_dataset(trainset_size=None, testset_size=None, batch_size=RESNET_BA
                                             shuffle=False, num_workers=2)
 
     dataloaders = {
-        'train': trainloader, 
+        'train': trainloader,
         'val': testloader
     }
     dataset_sizes = {
@@ -171,7 +172,7 @@ def get_resnet_and_optimizer(classes):
 
     return  model_ft, criterion, optimizer_ft, exp_lr_scheduler
 
-    
+
 
 def collect_timing_data_resnet():
 
@@ -185,21 +186,21 @@ def collect_timing_data_resnet():
     print("Instantiating resnet")
     model, criterion, optimizer, scheduler = get_resnet_and_optimizer(classes)
 
-    
+
     # Train and time
     print("Training ResNet")
     model, timing_data = train_resnet(
-        model, 
-        criterion, 
-        optimizer, 
+        model,
+        criterion,
+        optimizer,
         scheduler,
-        dataloaders, 
-        DEVICE, 
+        dataloaders,
+        DEVICE,
         dataset_sizes,
         num_epochs=1
     )
 
-    return model, timing_data 
+    return model, timing_data
 
 def evaluate_resnet():
 

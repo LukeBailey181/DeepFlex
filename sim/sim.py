@@ -118,7 +118,7 @@ class Server(Actor):
         self.current_epoch = 0
         self.target_epoch = 10
 
-        # Datasets 
+        # Datasets
         self.train_dataset = None
         self.train_dataset_iter = None
         self.test_dataset = None
@@ -156,8 +156,8 @@ class Server(Actor):
         self.global_model = model
         # TODO: Don't hardcode hyperparams
         self.global_optimizer = optim.SGD(
-            self.global_model.parameters(), 
-            lr=0.001, 
+            self.global_model.parameters(),
+            lr=0.001,
             momentum=0.9
         )
 
@@ -185,15 +185,15 @@ class Server(Actor):
 
         if self.test_dataset is None:
             print("ABORT EVALUATION - No test dataset")
-            return 
+            return
 
         model = self.global_model
         model.eval()
         total_correct = 0
-        total_example = 0 
+        total_example = 0
         with torch.no_grad():
             for batch in self.test_dataset:
-                inputs, labels = batch 
+                inputs, labels = batch
                 outputs = model(inputs)
                 _, preds = torch.max(outputs, 1)
                 total_correct += (labels == preds).sum().item()
@@ -586,6 +586,7 @@ class Simulation:
 
                 # Training for async
                 if (self.scheduler.servers[server.id].mode == TrainingMode.ASYNC):
+                    client.model.to("cpu")
                     param_zip = zip(client.model.parameters(), server.global_model.parameters())
                     for client_param, global_param in param_zip:
                         global_param.grad = client_param.grad

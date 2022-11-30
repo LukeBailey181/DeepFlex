@@ -8,11 +8,11 @@ import torch
 RESNET_CLASSES = ('plane', 'car', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck')
 
 # Number of examples, not number of batches
-TRAINSET_SIZE = 32000
+TRAINSET_SIZE = 64
 TESTSET_SIZE = 100
 BATCH_SIZE = 64
 NUM_EPOCHS = 15
-DEVICE = "cpu"
+DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 def run_resnet_simulation():
 
@@ -20,7 +20,7 @@ def run_resnet_simulation():
     simulation = Simulation()
     s1 = simulation.create_server(training_mode=TrainingMode.ASYNC)
     c1 = simulation.create_client()
-    c1.device = DEVICE
+    simulation.actors[c1].device = DEVICE
     #c2 = simulation.create_client()
 
     server: Server = simulation.actors[s1]
@@ -49,6 +49,7 @@ def run_resnet_simulation():
 
     # Assign model
     resnet, _, _, _= get_resnet_and_optimizer(RESNET_CLASSES)
+    # ic(next(resnet.parameters()).device)
     server.set_model(resnet)
 
     # Run simulation
@@ -87,4 +88,4 @@ def run_resnet_simulation():
 
 if __name__ == "__main__":
 
-    run_resnet_simulation() 
+    run_resnet_simulation()
