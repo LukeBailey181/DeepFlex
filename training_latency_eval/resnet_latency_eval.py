@@ -16,6 +16,7 @@ import copy
 from collections import defaultdict
 
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+#DEVICE = torch.device("mps")
 RESNET_BATCH_SIZE = 64
 DATASET_SIZE = 32000
 
@@ -91,7 +92,7 @@ def train_resnet(
                 scheduler.step()
 
             epoch_loss = running_loss / dataset_sizes[phase]
-            epoch_acc = running_corrects.double() / dataset_sizes[phase]
+            epoch_acc = running_corrects / dataset_sizes[phase]
 
             print(f'{phase} Loss: {epoch_loss:.4f} Acc: {epoch_acc:.4f}')
 
