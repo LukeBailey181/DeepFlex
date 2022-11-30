@@ -8,10 +8,11 @@ import torch
 RESNET_CLASSES = ('plane', 'car', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck')
 
 # Number of examples, not number of batches
-TRAINSET_SIZE = 64
-TESTSET_SIZE = 1000
+TRAINSET_SIZE = 32000
+TESTSET_SIZE = 100
 BATCH_SIZE = 64
-NUM_EPOCHS = 10
+NUM_EPOCHS = 15
+DEVICE = "cpu"
 
 def run_resnet_simulation():
 
@@ -19,6 +20,7 @@ def run_resnet_simulation():
     simulation = Simulation()
     s1 = simulation.create_server(training_mode=TrainingMode.ASYNC)
     c1 = simulation.create_client()
+    c1.device = DEVICE
     #c2 = simulation.create_client()
 
     server: Server = simulation.actors[s1]
