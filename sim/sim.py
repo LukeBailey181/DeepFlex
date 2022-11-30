@@ -55,9 +55,9 @@ class Client(Actor):
         # TODO: make this dependent on task
         self.training_time = 10 // speed
 
-        self.assigned_server: Server = None
-        self.task_complete = False
-        self.model = None
+        self.assigned_server: Optional[Server] = None
+        self.task_complete: bool = False
+        self.model: Optional[torch.nn.Module] = None
         self.data = {}
         self.gradients = defaultdict(lambda: 0)
         self.staleness = 0
@@ -109,7 +109,7 @@ class Server(Actor):
         self.global_optimizer = None
         self.client_updates = {}
         self.client_losses = defaultdict(list)
-        self.epoch_losses = defaultdict(lambda:0)
+        self.epoch_losses = defaultdict(lambda: 0)
 
         self.client_staleness_threshold = 5
         self.is_busy: bool = False
@@ -156,14 +156,12 @@ class Server(Actor):
         self.global_model = model
         # TODO: Don't hardcode hyperparams
         self.global_optimizer = optim.SGD(
-            self.global_model.parameters(),
-            lr=0.001,
-            momentum=0.9
+            self.global_model.parameters(), lr=0.001, momentum=0.9
         )
 
     def get_next_batch(self):
 
-        if (self.current_batch % 100 == 0):
+        if self.current_batch % 100 == 0:
             print(f"Batch {self.current_batch}")
 
         try:
@@ -208,7 +206,7 @@ class Server(Actor):
             for (time, loss, epoch) in client_losses:
                 losses.append((time, loss, client_id))
 
-        losses = sorted(losses, key = lambda x: x[0])
+        losses = sorted(losses, key=lambda x: x[0])
 
         return losses
 
@@ -393,7 +391,7 @@ class Simulation:
         return self.actors[event.origin]
 
     def process_event(self, event: SimEvent, **kwargs) -> None:
-        #ic(event)
+        # ic(event)
 
         match event.type:
 
@@ -491,7 +489,11 @@ class Simulation:
 
                 loss = client.run_training(batch)
                 server.client_losses[client.id].append(
-                    [self.current_time + client.training_time, loss, server.current_epoch]
+                    [
+                        self.current_time + client.training_time,
+                        loss,
+                        server.current_epoch,
+                    ]
                 )
                 server.epoch_losses[server.current_epoch] += loss
 
@@ -579,15 +581,16 @@ class Simulation:
                 #       server.aggregate_gradients(gradients)
                 #           in sync case, wait for all clients to send updates.
 
-
-                #gradients_list = []
-                #gradients_list.append(client.gradients)
-                #server.clear_gradients()
+                # gradients_list = []
+                # gradients_list.append(client.gradients)
+                # server.clear_gradients()
 
                 # Training for async
-                if (self.scheduler.servers[server.id].mode == TrainingMode.ASYNC):
+                if self.scheduler.servers[server.id].mode == TrainingMode.ASYNC:
                     client.model.to("cpu")
-                    param_zip = zip(client.model.parameters(), server.global_model.parameters())
+                    param_zip = zip(
+                        client.model.parameters(), server.global_model.parameters()
+                    )
                     for client_param, global_param in param_zip:
                         global_param.grad = client_param.grad
                     server.global_optimizer.step()
@@ -671,7 +674,7 @@ class Simulation:
             # update to next time
             self.current_time = max(self.current_time, event.time)
 
-            #print(f"Processing event {event.type} at time {event.time}")
+            # print(f"Processing event {event.type} at time {event.time}")
             self.process_event(event)
 
         print(f"Simulation finished running at time {self.current_time}")
