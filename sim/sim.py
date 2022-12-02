@@ -196,6 +196,7 @@ class Server(Actor):
                 _, preds = torch.max(outputs, 1)
                 total_correct += (labels == preds).sum().item()
                 total_example += inputs.size(0)
+        model.train()
 
         return total_correct / total_example
 

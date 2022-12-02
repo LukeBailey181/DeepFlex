@@ -1,14 +1,16 @@
 from training_latency_eval.resnet_latency_eval import get_cfar_dataset, get_resnet_and_optimizer
 from sim.sim import Simulation, Client, Server, TrainingMode
+from training_latency_eval.resnet_helpers import imshow
 from matplotlib import pyplot as plt
 from icecream import ic
 import torch
+import torchvision
 
 # For instantiating ResNet model
 RESNET_CLASSES = ('plane', 'car', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck')
 
 # Number of examples, not number of batches
-TRAINSET_SIZE = 64
+TRAINSET_SIZE = 20000
 TESTSET_SIZE = 100
 BATCH_SIZE = 64
 NUM_EPOCHS = 15
@@ -83,6 +85,22 @@ def run_resnet_simulation():
     # Print model accuracy
     acc = server.evaluate_global_model()
     print(f"Model accuracy = {acc}")
+    
+    # Showimages
+    i = 0
+    with torch.no_grad():
+        for batch in test_dataset:
+            inputs, labels = batch
+            outputs = simulation.actors[s1].global_model(inputs)
+            _, preds = torch.max(outputs, 1)
+
+            imshow(torchvision.utils.make_grid(inputs))
+            # print labels
+            print([RESNET_CLASSES[labels[i]] for i in  range(BATCH_SIZE)])
+
+            if i == 2:
+                break
+            i += 1
 
     return simulation
 
