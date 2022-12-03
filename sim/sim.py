@@ -186,7 +186,6 @@ class Server(Actor):
             return
 
         model = self.global_model
-        model.eval()
         total_correct = 0
         total_example = 0
         with torch.no_grad():
