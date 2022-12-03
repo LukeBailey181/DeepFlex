@@ -15,7 +15,8 @@ import os
 import copy
 from collections import defaultdict
 
-DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+#DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+DEVICE = torch.device("cpu")
 #DEVICE = torch.device("mps")
 RESNET_BATCH_SIZE = 64
 DATASET_SIZE = None

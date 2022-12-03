@@ -98,12 +98,14 @@ def run_resnet_simulation():
     print(f"Model accuracy = {acc}")
 
     # Showimages
+    total_correct = 0
+    total_example = 0
     with torch.no_grad():
         for batch in test_dataset:
             inputs, labels = batch
             outputs = simulation.actors[s1].global_model(inputs)
             _, preds = torch.max(outputs, 1)
-
+            """
             print("[labels, preds]")
             print(
                 list(
@@ -113,14 +115,17 @@ def run_resnet_simulation():
                     )
                 )
             )
-            print(labels == preds)
-            total_correct = (labels == labels).sum().item()
-            total_example = inputs.size(0)
-            print(total_correct)
-            print(total_example)
-            print(total_correct / total_example)
-            imshow(torchvision.utils.make_grid(inputs))
-            break
+            """
+            batch_cor = (labels == preds).sum().item()
+            batch_examples = inputs.size(0)
+            print("Batch acc:")
+            print(batch_cor/batch_examples)
+            total_correct += batch_cor  
+            total_example += batch_examples
+            #imshow(torchvision.utils.make_grid(inputs))
+    
+    print("Accuracy")
+    print(total_correct / total_example)
 
     return simulation
 
