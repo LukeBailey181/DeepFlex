@@ -19,7 +19,7 @@ from collections import defaultdict
 DEVICE = torch.device("cpu")
 #DEVICE = torch.device("mps")
 RESNET_BATCH_SIZE = 64
-DATASET_SIZE = None
+DATASET_SIZE = 64
 EPOCHS = 10
 PRETRAINED = False
 
@@ -84,9 +84,6 @@ def train_resnet(
                 # statistics
                 running_loss += loss.item() * inputs.size(0)
                 running_corrects += torch.sum(preds == labels.data).item()
-                print("debug")
-                print(torch.sum(preds == labels.data).item())
-                print(torch.sum(preds == labels.data))
 
                 end = time.time()
 
@@ -196,7 +193,7 @@ def collect_timing_data_resnet():
 
     # Get datasset
     print("Collecting CFAR dataset")
-    dataloaders, dataset_sizes, classes = get_cfar_dataset(DATASET_SIZE)
+    dataloaders, dataset_sizes, classes = get_cfar_dataset(DATASET_SIZE, DATASET_SIZE)
 
     print(len(dataloaders["train"]))
 
@@ -217,12 +214,12 @@ def collect_timing_data_resnet():
         num_epochs=EPOCHS,
     )
 
-    return model, timing_data
+    return model, timing_data, dataloaders
 
 
 def evaluate_resnet():
 
-    model, timing_data = collect_timing_data_resnet()
+    model, timing_data, dataloaders = collect_timing_data_resnet()
 
     epoch_0 = timing_data[0]
     plt.ylabel("Minibatch latency (s)")
@@ -234,6 +231,29 @@ def evaluate_resnet():
     print(f"\nRESNET TRAINING TIME DATAPOINTS = {len(epoch_0[2:])}")
     print(f"\nRESNET MEAN TRAINING TIME VALUE = {np.array(epoch_0)[10:].mean()}")
 
+    total_correct = 0
+    total_example = 0
+    model.eval()
+    with torch.no_grad():
+        for batch in dataloaders["val"]:
+            inputs, labels = batch
+            outputs = model(inputs)
+            _, preds = torch.max(outputs, 1)
+            total_correct += (labels == preds).sum().item()
+            total_example += inputs.size(0)
+
+    print(f"Final model acc (eval mode) = {total_correct/total_example}")
+    
+    model.train()
+    with torch.no_grad():
+        for batch in dataloaders["val"]:
+            inputs, labels = batch
+            outputs = model(inputs)
+            _, preds = torch.max(outputs, 1)
+            total_correct += (labels == preds).sum().item()
+            total_example += inputs.size(0)
+
+    print(f"Final model acc (train mode) = {total_correct/total_example}")
 
 if __name__ == "__main__":
     evaluate_resnet()
