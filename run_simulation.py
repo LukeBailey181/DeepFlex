@@ -92,40 +92,24 @@ def run_resnet_simulation():
     plt.ylabel("Traiing loss")
     plt.title("Training losses of all clients per epoch")
     plt.savefig("./loss_against_epoch.jpg")
+    plt.clf()
 
     # Print model accuracy
     acc = server.evaluate_global_model()
     print(f"Model accuracy = {acc}")
 
-    # Showimages
-    total_correct = 0
-    total_example = 0
-    with torch.no_grad():
-        for batch in test_dataset:
-            inputs, labels = batch
-            outputs = simulation.actors[s1].global_model(inputs)
-            _, preds = torch.max(outputs, 1)
-            """
-            print("[labels, preds]")
-            print(
-                list(
-                    zip(
-                        [RESNET_CLASSES[labels[i]] for i in range(BATCH_SIZE)],
-                        [RESNET_CLASSES[preds[i]] for i in range(BATCH_SIZE)],
-                    )
-                )
-            )
-            """
-            batch_cor = (labels == preds).sum().item()
-            batch_examples = inputs.size(0)
-            print("Batch acc:")
-            print(batch_cor/batch_examples)
-            total_correct += batch_cor  
-            total_example += batch_examples
-            #imshow(torchvision.utils.make_grid(inputs))
-    
-    print("Accuracy")
-    print(total_correct / total_example)
+    epoch_accs = simulation.actors[s1].epoch_accs
+    x_vals, y_vals = [], []
+    for epoch, acc in epoch_losses.items():
+        x_vals.append(epoch)
+        y_vals.append(acc)
+
+    plt.plot(x_vals, y_vals)
+    plt.xlabel("Epoch")
+    plt.ylabel("Accuracy")
+    plt.title("Global model epoch accuracy")
+    plt.savefig("./accuracy_against_epoch.jpg")
+    plt.clf()
 
     return simulation
 

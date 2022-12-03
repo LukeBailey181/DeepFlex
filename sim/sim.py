@@ -110,6 +110,7 @@ class Server(Actor):
         self.client_updates = {}
         self.client_losses = defaultdict(list)
         self.epoch_losses = defaultdict(lambda: 0)
+        self.epoch_accs = {}
 
         self.client_staleness_threshold = 5
         self.is_busy: bool = False
@@ -158,7 +159,7 @@ class Server(Actor):
         self.global_optimizer = optim.SGD(
             self.global_model.parameters(), lr=0.001, momentum=0.9
         )
-
+        
     def get_next_batch(self):
 
         if self.current_batch % 100 == 0:
@@ -169,6 +170,8 @@ class Server(Actor):
             self.current_batch += 1
             return batch
         except StopIteration:
+            # end of epoch
+            self.epoch_accs[self.current_epoch] = self.evaluate_global_model()
             if self.current_epoch < self.target_epoch:
                 # reset iterator if target epoch not reached
                 # TODO: replace this with convergence metric
@@ -182,8 +185,7 @@ class Server(Actor):
     def evaluate_global_model(self) -> Optional[float]:
 
         if self.test_dataset is None:
-            print("ABORT EVALUATION - No test dataset")
-            return
+            return -1
 
         model = self.global_model
         total_correct = 0
