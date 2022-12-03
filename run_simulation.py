@@ -113,6 +113,12 @@ def run_resnet_simulation():
                     )
                 )
             )
+            print(labels == preds)
+            total_correct = (labels == labels).sum().item()
+            total_example = inputs.size(0)
+            print(total_correct)
+            print(total_example)
+            print(total_correct / total_example)
             imshow(torchvision.utils.make_grid(inputs))
             break
 
