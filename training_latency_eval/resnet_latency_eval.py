@@ -21,6 +21,7 @@ DEVICE = torch.device("cpu")
 RESNET_BATCH_SIZE = 64
 DATASET_SIZE = None
 EPOCHS = 10
+PRETRAINED = False
 
 def train_resnet(
     model,
@@ -172,7 +173,7 @@ def get_cfar_dataset(
 
 def get_resnet_and_optimizer(classes):
 
-    model_ft = models.resnet18(pretrained=True)
+    model_ft = models.resnet18(pretrained=PRETRAINED)
     num_ftrs = model_ft.fc.in_features
     # Here the size of each output sample is set to 2.
     # Alternatively, it can be generalized to nn.Linear(num_ftrs, len(class_names)).
