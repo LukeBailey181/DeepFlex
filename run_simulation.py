@@ -24,14 +24,15 @@ RESNET_CLASSES = (
 )
 
 # Number of examples, not number of batches
-TRAINSET_SIZE = 64
-TESTSET_SIZE = 100
+TRAINSET_SIZE = None
+TESTSET_SIZE = None
 BATCH_SIZE = 64
 NUM_EPOCHS = 15
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
 def run_resnet_simulation():
+    print(DEVICE)
 
     # Configure simulation
     simulation = Simulation()
