@@ -11,7 +11,7 @@ from training_latency_eval.resnet_helpers import (
 from icecream import ic
 
 # Number of examples, not number of batches
-TRAINSET_SIZE = 64
+TRAINSET_SIZE = 64 * 4
 TESTSET_SIZE = 100
 BATCH_SIZE = 64
 NUM_EPOCHS = 1
@@ -22,15 +22,19 @@ def run_resnet_simulation():
 
     # Configure simulation
     simulation = Simulation()
-    s1 = simulation.create_server(training_mode=TrainingMode.ASYNC)
+    s1 = simulation.create_server(training_mode=TrainingMode.SYNC)
     c1 = simulation.create_client()
+    c2 = simulation.create_client()
     simulation.actors[c1].device = DEVICE
+    simulation.actors[c2].device = DEVICE
     server: Server = simulation.actors[s1]
     server.target_epoch = NUM_EPOCHS
     simulation.online_client(c1)
+    simulation.online_client(c2)
 
     simulation.print_actors()
     simulation.assign_client_to_server(client_id=c1, server_id=s1)
+    simulation.assign_client_to_server(client_id=c2, server_id=s1)
     simulation.time_limit = 800000  # Default value is 100
 
     # Assign dataset

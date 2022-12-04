@@ -1,7 +1,10 @@
 from __future__ import annotations
+from functools import reduce
 
 from queue import PriorityQueue
 from typing import TYPE_CHECKING, List, Tuple
+import numpy as np
+import torch
 
 from icecream import ic
 
@@ -124,7 +127,7 @@ class Simulation:
 
     def process_event(self, event: SimEvent, **kwargs) -> None:
         # TODO: Add verbosity flag to control event printing
-        #ic(event)
+        ic(event)
 
         # Simulation control events
         if event.type == SET.SIM_PAUSE:
@@ -303,7 +306,7 @@ class Simulation:
 
             # TODO: keep on GPU if possible
             client.model.to("cpu")
-            server.client_updates[client.id] = client.model.parameters()
+            server.client_updates[client.id] = [x.grad for x in client.model.parameters()]
 
             self.add_event(
                 SimEvent(
@@ -348,8 +351,8 @@ class Simulation:
             param_zip = zip(
                 server.client_updates[client.id], server.global_model.parameters()
             )
-            for client_param, global_param in param_zip:
-                global_param.grad = client_param.grad
+            for client_grad, global_param in param_zip:
+                global_param.grad = client_grad
             server.global_optimizer.step()
 
             self.add_event(
@@ -391,19 +394,17 @@ class Simulation:
             server.is_busy = True
 
             grad_updates = []
-            for updates in server.client_updates.values():
-                for idx, update in enumerate(updates):
-                    if idx == 0:
-                        grad_updates.append(update)
-                    else:
-                        grad_updates[idx] += update
+
+            # list of list of tensors
+            add_tensors = lambda x, y: list(map(torch.add, x, y))
+            grad_updates = reduce(add_tensors, server.client_updates.values())
 
             update_count = len(server.client_updates.keys())
             grad_updates = [x / update_count for x in grad_updates]
 
             param_zip = zip(grad_updates, server.global_model.parameters())
-            for client_param, global_param in param_zip:
-                global_param.grad = client_param.grad
+            for clients_grad, global_param in param_zip:
+                global_param.grad = clients_grad
             server.global_optimizer.step()
 
             self.add_event(
