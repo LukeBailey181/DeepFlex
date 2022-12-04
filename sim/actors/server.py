@@ -50,6 +50,9 @@ class Server(Actor):
 
         self.server_gradient_dict = defaultdict(lambda: 0)
 
+    def clear_updates(self):
+        self.client_updates.clear()
+
     def clear_gradients(self):
         for name in self.server_gradient_dict:
             self.server_gradient_dict[name] = 0

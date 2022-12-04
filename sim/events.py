@@ -20,16 +20,24 @@ class SimEventType(Enum):
     CLIENT_CLAIMED = auto()
 
     # Server activities
-    SERVER_ACQUIRE_CLIENT = auto()    # Server expresses intent to acqu
-    SERVER_RELEASE_CLIENT = auto()  #
+    SERVER_ACQUIRE_CLIENT = auto()
+    SERVER_RELEASE_CLIENT = auto()
 
     SERVER_DEFER_CLIENT_REQUEST = auto()
+
+    # Server receives gradients from client
     SERVER_CLIENT_AGGREGATION_START = auto()
     SERVER_CLIENT_AGGREGATION_END = auto()
 
-    SERVER_UPDATE_GLOBAL_MODEL_START = auto()
-    SERVER_UPDATE_GLOBAL_MODEL_END = auto()
+    # Server processes aggregated updates
+    SERVER_GLOBAL_MODEL_UPDATE_ASYNC_START = auto()
+    SERVER_GLOBAL_MODEL_UPDATE_ASYNC_END = auto()
 
+    # Server processes synchronous updates
+    SERVER_GLOBAL_MODEL_UPDATE_SYNC_START = auto()
+    SERVER_GLOBAL_MODEL_UPDATE_SYNC_END = auto()
+
+    # Server sends global model to client
     SERVER_CLIENT_SYNC_START = auto()
     SERVER_CLIENT_SYNC_END = auto()
 
