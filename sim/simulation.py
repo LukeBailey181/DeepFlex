@@ -1,277 +1,16 @@
 from __future__ import annotations
-import copy
-from dataclasses import dataclass, field
-from enum import Enum, unique
-from typing import List, Set, Tuple, Optional
+
 from queue import PriorityQueue
-from torch.utils.data import DataLoader
-import torch.nn as nn
-import torch.optim as optim
-from collections import defaultdict
-import torch
+from typing import TYPE_CHECKING, List, Tuple
 
 from icecream import ic
 
+from sim.actors import Actor, Client, Server, TrainingMode
+from sim.events import SimEvent
+from sim.events import SimEventType as SET
+from sim.scheduler import Scheduler
+
 ic.configureOutput(includeContext=True)
-
-from .events import SimEvent, SimEventType as SET
-
-
-@unique
-class ActorType(Enum):
-    SERVER = 0
-    CLIENT = 1
-    SCHEDULER = 2
-
-
-@unique
-class TrainingMode(Enum):
-    SYNC = 0
-    ASYNC = 1
-
-
-class Actor:
-    """
-    Base class for simulation actors--handles events
-    """
-
-    def __init__(self, sim: Simulation, category: str) -> None:
-        self.sim = sim
-        self._assign_id()
-        self.category = category
-
-    def _assign_id(self):
-        self.id = self.sim.actor_id_counter
-        self.sim.actor_id_counter += 1
-
-
-class Client(Actor):
-    default_speed = 1
-    default_retry_time = 5
-
-    def __init__(self, sim: Simulation, speed=1) -> None:
-        super().__init__(sim, category="Client")
-        self.speed = speed
-        # TODO: make this dependent on task
-        self.training_time = 10 // speed
-
-        self.assigned_server: Optional[Server]
-        self.model = {}
-        self.data = {}
-        self.gradients = defaultdict(float)
-        self.criterion = None
-        self.optimizer = None
-
-        self.task_complete: bool = False
-        self.staleness = 0
-        self.device = "cpu"
-
-    def sync_model(self, global_model) -> None:
-        # deepcopy to detach from global model
-        self.model = copy.deepcopy(global_model)
-        self.model.to(self.device)
-        self.criterion = nn.CrossEntropyLoss()
-        self.optimizer = optim.SGD(self.model.parameters(), lr=0.001, momentum=0.9)
-        self.optimizer.zero_grad()
-
-    def train(self, batch) -> float:
-        # TODO: integrate training
-        inputs, labels = batch
-        inputs = inputs.to(self.device)
-        labels = labels.to(self.device)
-
-        # forward + backward + optimize
-        outputs = self.model(inputs)
-        loss = self.criterion(outputs, labels)
-        loss.backward()
-        self.update_gradients()
-
-        return loss.item()
-
-    def clear_gradients(self):
-        for name in self.gradients:
-            self.gradients[name] = 0
-
-    def update_gradients(self):
-        for name, w in self.model.named_parameters():
-            self.gradients[name] += w.grad
-
-
-class Server(Actor):
-    def __init__(self, sim: Simulation) -> None:
-        super().__init__(sim, category="Parameter Server")
-        # TODO: make this configurable
-        self.aggregation_time = 10
-        self.sync_time = 2
-
-        # Training mode, starts as synchronous
-        self.mode: TrainingMode = TrainingMode.SYNC
-
-        self.global_model = None
-        self.global_optimizer = None
-        self.assigned_clients: dict[int, Client] = {}
-        self.client_updates: dict[int, object] = {}
-        self.client_losses = defaultdict(list)
-        self.epoch_losses = defaultdict(lambda: 0)
-        self.epoch_accs = {}
-
-        self.client_staleness_threshold = 5
-        self.is_busy: bool = False
-        self.current_batch = False
-
-        self.current_epoch = 0
-        self.target_epoch = 10
-
-        # Datasets
-        self.train_dataset = None
-        self.train_dataset_iter = None
-        self.test_dataset = None
-
-        self.server_gradient_dict = defaultdict(lambda: 0)
-
-    def clear_gradients(self):
-        for name in self.server_gradient_dict:
-            self.server_gradient_dict[name] = 0
-
-    def aggregate_gradients(self, gradients_list):
-        for g in gradients_list:
-            for name in g:
-                self.server_gradient_dict[name] += g[name]
-
-        # normalized gradient values
-        gradients_list_length = len(gradients_list)
-        for name in g:
-            self.server_gradient_dict[name] /= gradients_list_length
-
-        for name, w in self.global_model.named_parameters():
-            self.global_model.named_parameters[name] += self.server_gradient_dict[name]
-
-    def set_train_dataset(self, dataloader: DataLoader) -> None:
-        self.train_dataset = dataloader
-        self.train_dataset_iter = iter(dataloader)
-
-    def set_test_dataset(self, dataloader: DataLoader) -> None:
-        self.test_dataset = dataloader
-
-    def set_model(self, model) -> None:
-        self.global_model = model
-        # TODO: Don't hardcode hyperparams
-        self.global_optimizer = optim.SGD(
-            self.global_model.parameters(), lr=0.001, momentum=0.9
-        )
-
-    def get_next_batch(self):
-
-        if self.current_batch % 100 == 0:
-            print(f"Batch {self.current_batch}")
-
-        try:
-            batch = next(self.train_dataset_iter)
-            self.current_batch += 1
-            return batch
-        except StopIteration:
-            # end of epoch
-            self.epoch_accs[self.current_epoch] = self.evaluate_global_model()
-            if self.current_epoch < self.target_epoch:
-                # reset iterator if target epoch not reached
-                # TODO: replace this with convergence metric
-                self.current_epoch += 1
-                self.current_batch = 0
-                self.train_dataset_iter = iter(self.train_dataset)
-                return self.get_next_batch()
-
-        return None
-
-    def evaluate_global_model(self) -> Optional[float]:
-
-        if self.test_dataset is None:
-            return -1
-
-        model = self.global_model
-        total_correct = 0
-        total_example = 0
-        with torch.no_grad():
-            for batch in self.test_dataset:
-                inputs, labels = batch
-                outputs = model(inputs)
-                _, preds = torch.max(outputs, 1)
-                total_correct += (labels == preds).sum().item()
-                total_example += inputs.size(0)
-        model.train()
-
-        return total_correct / total_example
-
-    def export_all_losses(self):
-        # Return list of loss tupples of form (time, loss, client_id)
-        losses = []
-        for client_id, client_losses in self.client_losses.items():
-            for (time, loss, epoch) in client_losses:
-                losses.append((time, loss, client_id))
-
-        losses = sorted(losses, key=lambda x: x[0])
-
-        return losses
-
-
-@dataclass
-class ServerInfo:
-    mode: TrainingMode = field(default=TrainingMode.SYNC)
-    client_ids: set[int] = field(default_factory=set)
-    updates: set[int] = field(default_factory=set)
-
-
-class Scheduler(Actor):
-    def __init__(self, sim: Simulation) -> None:
-        super().__init__(sim, category="Category")
-        self.servers: dict[int, ServerInfo] = {}
-        self.online_clients = set()
-        self.available_clients = set()
-
-    def online_client(self, client: Client):
-        self.online_clients.add(client.id)
-        self.available_clients.add(client.id)
-
-    def offline_client(self, client: Client):
-        self.servers[client.assigned_server.id].client_ids.add(client.id)
-        self.available_clients.remove(client.id)
-        self.online_clients.remove(client.id)
-
-    def assign_client_to_server(self, client: Client, server: Server):
-        self.servers[server.id].client_ids.add(client.id)
-        client.assigned_server = server
-        self.available_clients.remove(client.id)
-
-    def unassign_client(self, client: Client):
-        self.servers[client.assigned_server.id].client_ids.remove(client.id)
-        client.assigned_server = None
-        self.available_clients.add(client.id)
-
-    def register_server(self, server: Server, mode: TrainingMode):
-        self.servers[server.id] = ServerInfo(mode=mode)
-
-    def unregister_server(self, server_id: int):
-        del self.servers[server_id]
-
-    def broadcast_sync_start(self, server_id: int):
-        sim = self.sim
-
-        server_info = self.servers[server_id]
-        for client_id in server_info.client_ids:
-            sim.add_event(
-                SimEvent(
-                    time=sim.now(),
-                    type=SET.SERVER_CLIENT_SYNC_START,
-                    origin=server_id,
-                    target=client_id,
-                )
-            )
-
-        # reset list of updates received
-        server_info.updates.clear()
-
-    def check_server_aggregation_readiness(self, server_id: int):
-        server_info = self.servers[server_id]
-        return len(server_info.updates) == len(server_info.client_ids)
 
 
 class Simulation:
@@ -285,18 +24,8 @@ class Simulation:
         self.actor_id_counter: int = 0
         self.actors: dict[int, Actor] = {}
 
-        # Schduler is the first actor in the simulation
-        scheduler = Scheduler(self)
-        self.scheduler = scheduler
-        self.actors[scheduler.id] = scheduler
-
-    def _validate_time(self, t: int, msg: str):
-        time = t if t else self.now()
-        if time < self.now():
-            print(
-                f"Warning! Event scheduled for time {time} before current simulation time {self.now()}."
-            )
-        return time
+        # scheduler handles client-server interaction
+        self.scheduler = Scheduler()
 
     def now(self):
         return self.current_time
@@ -308,22 +37,22 @@ class Simulation:
     def init_clients(self, client_count: int, client_speeds: List[int]) -> None:
         for i in range(client_count):
             speed = client_speeds[i] if client_speeds else Client.default_speed
-            new_client = Client(self, speed)
+            new_client = Client(speed)
             self.actors[new_client.id] = new_client
 
     def init_servers(self, server_count: int) -> None:
         for _ in range(server_count):
-            new_server = Server(self)
+            new_server = Server()
             self.actors[new_server.id] = new_server
 
     def create_client(self, client_speed=None, t=None):
         speed = client_speed if client_speed else Client.default_speed
-        new_client = Client(self, speed)
+        new_client = Client(speed)
         self.actors[new_client.id] = new_client
         return new_client.id
 
     def create_server(self, training_mode=TrainingMode.SYNC, t=None):
-        new_server = Server(self)
+        new_server = Server()
         self.actors[new_server.id] = new_server
         self.scheduler.register_server(new_server, training_mode)
         return new_server.id
