@@ -15,13 +15,29 @@ class SimEventType(Enum):
     # Client availability
     CLIENT_ONLINE = auto()      # Client is newly online
     CLIENT_OFFLINE = auto()     # Client is taken offline
-    CLIENT_AVAILABLE = auto()   # Client is now available after finishing task
+
+    CLIENT_AVAILABLE = auto()   # Client is available and can be claimed
+    CLIENT_CLAIMED = auto()
 
     # Server activities
-    SERVER_CLAIM_CLIENT = auto()
+    SERVER_ACQUIRE_CLIENT = auto()
+    SERVER_RELEASE_CLIENT = auto()
+
     SERVER_DEFER_CLIENT_REQUEST = auto()
+
+    # Server receives gradients from client
     SERVER_CLIENT_AGGREGATION_START = auto()
     SERVER_CLIENT_AGGREGATION_END = auto()
+
+    # Server processes aggregated updates
+    SERVER_GLOBAL_MODEL_UPDATE_ASYNC_START = auto()
+    SERVER_GLOBAL_MODEL_UPDATE_ASYNC_END = auto()
+
+    # Server processes synchronous updates
+    SERVER_GLOBAL_MODEL_UPDATE_SYNC_START = auto()
+    SERVER_GLOBAL_MODEL_UPDATE_SYNC_END = auto()
+
+    # Server sends global model to client
     SERVER_CLIENT_SYNC_START = auto()
     SERVER_CLIENT_SYNC_END = auto()
 
