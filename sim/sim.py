@@ -55,11 +55,14 @@ class Client(Actor):
         # TODO: make this dependent on task
         self.training_time = 10 // speed
 
-        self.assigned_server: Optional[Server] = None
-        self.task_complete: bool = False
-        self.model: Optional[torch.nn.Module] = None
+        self.assigned_server: Optional[Server]
+        self.model = {}
         self.data = {}
-        self.gradients = defaultdict(lambda: 0)
+        self.gradients = defaultdict(float)
+        self.criterion = None
+        self.optimizer = None
+
+        self.task_complete: bool = False
         self.staleness = 0
         self.device = "cpu"
 
@@ -71,7 +74,7 @@ class Client(Actor):
         self.optimizer = optim.SGD(self.model.parameters(), lr=0.001, momentum=0.9)
         self.optimizer.zero_grad()
 
-    def run_training(self, batch) -> float:
+    def train(self, batch) -> float:
         # TODO: integrate training
         inputs, labels = batch
         inputs = inputs.to(self.device)
@@ -92,7 +95,6 @@ class Client(Actor):
     def update_gradients(self):
         for name, w in self.model.named_parameters():
             self.gradients[name] += w.grad
-        pass
 
 
 class Server(Actor):
@@ -107,7 +109,8 @@ class Server(Actor):
 
         self.global_model = None
         self.global_optimizer = None
-        self.client_updates = {}
+        self.assigned_clients: dict[int, Client] = {}
+        self.client_updates: dict[int, object] = {}
         self.client_losses = defaultdict(list)
         self.epoch_losses = defaultdict(lambda: 0)
         self.epoch_accs = {}
@@ -125,9 +128,6 @@ class Server(Actor):
         self.test_dataset = None
 
         self.server_gradient_dict = defaultdict(lambda: 0)
-
-    def sync_model_to_client(self, client: Client):
-        client.sync_model(self.global_model)
 
     def clear_gradients(self):
         for name in self.server_gradient_dict:
@@ -159,7 +159,7 @@ class Server(Actor):
         self.global_optimizer = optim.SGD(
             self.global_model.parameters(), lr=0.001, momentum=0.9
         )
-        
+
     def get_next_batch(self):
 
         if self.current_batch % 100 == 0:
@@ -368,7 +368,7 @@ class Simulation:
         self.add_event(
             SimEvent(
                 time=time,
-                type=SET.SERVER_CLAIM_CLIENT,
+                type=SET.SERVER_ACQUIRE_CLIENT,
                 origin=server_id,
                 target=client_id,
             )
@@ -414,7 +414,7 @@ class Simulation:
             client: Client = self.actors[event.origin]
             self.scheduler.unassign_client(client)
 
-        elif event.type == SET.SERVER_CLAIM_CLIENT:
+        elif event.type == SET.SERVER_ACQUIRE_CLIENT:
             # Server claims client and attempts synchronization
             server, client = self.server_client_from_event(event)
 
@@ -443,7 +443,7 @@ class Simulation:
             server, client = self.server_client_from_event(event)
 
             # Sync global model with client
-            server.sync_model_to_client(client)
+            client.sync_model(server.global_model)
 
             self.add_event(
                 SimEvent(
@@ -487,7 +487,7 @@ class Simulation:
                 )
                 return
 
-            loss = client.run_training(batch)
+            loss = client.train(batch)
             server.client_losses[client.id].append(
                 [
                     self.current_time + client.training_time,
