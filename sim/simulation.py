@@ -53,6 +53,7 @@ class Simulation:
 
     def create_server(self, training_mode=TrainingMode.SYNC, t=None):
         new_server = Server()
+        new_server.mode = training_mode
         self.actors[new_server.id] = new_server
         self.scheduler.register_server(new_server, training_mode)
         return new_server.id
@@ -122,7 +123,8 @@ class Simulation:
         return self.actors[event.origin]
 
     def process_event(self, event: SimEvent, **kwargs) -> None:
-        # ic(event)
+        # TODO: Add verbosity flag to control event printing
+        #ic(event)
 
         # Simulation control events
         if event.type == SET.SIM_PAUSE:

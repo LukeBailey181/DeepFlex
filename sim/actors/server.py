@@ -96,10 +96,10 @@ class Server(Actor):
         except StopIteration:
             # end of epoch
             self.epoch_accs[self.current_epoch] = self.evaluate_global_model()
+            self.current_epoch += 1
             if self.current_epoch < self.target_epoch:
                 # reset iterator if target epoch not reached
                 # TODO: replace this with convergence metric
-                self.current_epoch += 1
                 self.current_batch = 0
                 self.train_dataset_iter = iter(self.train_dataset)
                 return self.get_next_batch()

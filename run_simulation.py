@@ -1,4 +1,5 @@
-from sim.sim import Simulation, Server, TrainingMode
+from sim.simulation import Simulation 
+from sim.actors import Server, TrainingMode
 from training_latency_eval.resnet_helpers import imshow
 from matplotlib import pyplot as plt
 import torch
@@ -7,12 +8,13 @@ from training_latency_eval.resnet_helpers import (
     get_cfar_dataset,
     RESNET_BATCH_SIZE,
 )
+from icecream import ic
 
 # Number of examples, not number of batches
 TRAINSET_SIZE = 64
 TESTSET_SIZE = 100
 BATCH_SIZE = 64
-NUM_EPOCHS = 15
+NUM_EPOCHS = 1
 PRETRAINED = True
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
