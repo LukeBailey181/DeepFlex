@@ -31,11 +31,15 @@ class Scheduler:
 
     def assign_client_to_server(self, client: Client, server: Server):
         self.server_state[server.id].client_ids.add(client.id)
+        server.assigned_clients[client.id] = client
         client.assigned_server = server
         self.available_clients.remove(client.id)
 
     def unassign_client(self, client: Client):
-        self.server_state[client.assigned_server.id].client_ids.remove(client.id)
+        server = client.assigned_server
+
+        self.server_state[server.id].client_ids.remove(client.id)
+        server.assigned_clients.pop(client.id)
         client.assigned_server = None
         self.available_clients.add(client.id)
 
