@@ -46,6 +46,7 @@ class Client(Actor):
         labels = labels.to(self.device)
 
         # forward + backward + optimize
+        self.model.to(self.device)
         outputs = self.model(inputs)
         loss = self.criterion(outputs, labels)
         loss.backward()

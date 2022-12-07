@@ -1,11 +1,12 @@
 from __future__ import annotations
-from functools import reduce
 
+from copy import deepcopy
+from functools import reduce
 from queue import PriorityQueue
 from typing import TYPE_CHECKING, List, Tuple
+
 import numpy as np
 import torch
-
 from icecream import ic
 
 from sim.actors import Actor, Client, Server, TrainingMode
@@ -167,13 +168,13 @@ class Simulation:
             self.add_event(
                 SimEvent(
                     time=self.now(),
-                    type=SET.SERVER_CLIENT_SYNC_START,
+                    type=SET.SERVER_SEND_MODEL_START,
                     origin=server.id,
                     target=client.id,
                 )
             )
 
-        elif event.type == SET.SERVER_CLIENT_SYNC_START:
+        elif event.type == SET.SERVER_SEND_MODEL_START:
             server, client = self.server_client_from_event(event)
             server.is_busy = True
 
@@ -183,13 +184,13 @@ class Simulation:
             self.add_event(
                 SimEvent(
                     time=self.now() + server.sync_time,
-                    type=SET.SERVER_CLIENT_SYNC_END,
+                    type=SET.SERVER_SEND_MODEL_END,
                     origin=server.id,
                     target=client.id,
                 )
             )
 
-        elif event.type == SET.SERVER_CLIENT_SYNC_END:
+        elif event.type == SET.SERVER_SEND_MODEL_END:
             # Immediately start training as soon as synchronization is done.
             server, client = self.server_client_from_event(event)
             server.is_busy = False
@@ -306,7 +307,8 @@ class Simulation:
 
             # TODO: keep on GPU if possible
             client.model.to("cpu")
-            server.client_updates[client.id] = [x.grad for x in client.model.parameters()]
+            client_grads = [x.grad for x in client.model.parameters()]
+            server.client_updates[client.id] = deepcopy(client_grads)
 
             self.add_event(
                 SimEvent(
@@ -383,7 +385,7 @@ class Simulation:
                 self.add_event(
                     SimEvent(
                         time=self.now(),
-                        type=SET.SERVER_CLIENT_SYNC_START,
+                        type=SET.SERVER_SEND_MODEL_START,
                         origin=server.id,
                         target=client.id,
                     )
@@ -436,7 +438,7 @@ class Simulation:
                     self.add_event(
                         SimEvent(
                             time=self.now(),
-                            type=SET.SERVER_CLIENT_SYNC_START,
+                            type=SET.SERVER_SEND_MODEL_START,
                             origin=server.id,
                             target=client.id,
                         )
