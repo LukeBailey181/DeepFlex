@@ -38,8 +38,10 @@ class Scheduler:
     def unassign_client(self, client: Client):
         server = client.assigned_server
 
-        self.server_state[server.id].client_ids.remove(client.id)
-        server.assigned_clients.pop(client.id)
+        if server is not None:
+            self.server_state[server.id].client_ids.remove(client.id)
+            server.assigned_clients.pop(client.id)
+
         client.assigned_server = None
         self.available_clients.add(client.id)
 
