@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+from copy import deepcopy
+from functools import reduce
 from queue import PriorityQueue
 from typing import TYPE_CHECKING, List, Tuple
 
+import numpy as np
+import torch
 from icecream import ic
 
 from sim.actors import Actor, Client, Server, TrainingMode
@@ -124,7 +128,7 @@ class Simulation:
 
     def process_event(self, event: SimEvent, **kwargs) -> None:
         # TODO: Add verbosity flag to control event printing
-        #ic(event)
+        ic(event)
 
         # Simulation control events
         if event.type == SET.SIM_PAUSE:
@@ -164,13 +168,13 @@ class Simulation:
             self.add_event(
                 SimEvent(
                     time=self.now(),
-                    type=SET.SERVER_CLIENT_SYNC_START,
+                    type=SET.SERVER_SEND_MODEL_START,
                     origin=server.id,
                     target=client.id,
                 )
             )
 
-        elif event.type == SET.SERVER_CLIENT_SYNC_START:
+        elif event.type == SET.SERVER_SEND_MODEL_START:
             server, client = self.server_client_from_event(event)
             server.is_busy = True
 
@@ -180,13 +184,13 @@ class Simulation:
             self.add_event(
                 SimEvent(
                     time=self.now() + server.sync_time,
-                    type=SET.SERVER_CLIENT_SYNC_END,
+                    type=SET.SERVER_SEND_MODEL_END,
                     origin=server.id,
                     target=client.id,
                 )
             )
 
-        elif event.type == SET.SERVER_CLIENT_SYNC_END:
+        elif event.type == SET.SERVER_SEND_MODEL_END:
             # Immediately start training as soon as synchronization is done.
             server, client = self.server_client_from_event(event)
             server.is_busy = False
@@ -303,7 +307,8 @@ class Simulation:
 
             # TODO: keep on GPU if possible
             client.model.to("cpu")
-            server.client_updates[client.id] = client.model.parameters()
+            client_grads = [x.grad for x in client.model.parameters()]
+            server.client_updates[client.id] = deepcopy(client_grads)
 
             self.add_event(
                 SimEvent(
@@ -348,8 +353,8 @@ class Simulation:
             param_zip = zip(
                 server.client_updates[client.id], server.global_model.parameters()
             )
-            for client_param, global_param in param_zip:
-                global_param.grad = client_param.grad
+            for client_grad, global_param in param_zip:
+                global_param.grad = client_grad
             server.global_optimizer.step()
 
             self.add_event(
@@ -380,7 +385,7 @@ class Simulation:
                 self.add_event(
                     SimEvent(
                         time=self.now(),
-                        type=SET.SERVER_CLIENT_SYNC_START,
+                        type=SET.SERVER_SEND_MODEL_START,
                         origin=server.id,
                         target=client.id,
                     )
@@ -391,19 +396,17 @@ class Simulation:
             server.is_busy = True
 
             grad_updates = []
-            for updates in server.client_updates.values():
-                for idx, update in enumerate(updates):
-                    if idx == 0:
-                        grad_updates.append(update)
-                    else:
-                        grad_updates[idx] += update
+
+            # list of list of tensors
+            add_tensors = lambda x, y: list(map(torch.add, x, y))
+            grad_updates = reduce(add_tensors, server.client_updates.values())
 
             update_count = len(server.client_updates.keys())
             grad_updates = [x / update_count for x in grad_updates]
 
             param_zip = zip(grad_updates, server.global_model.parameters())
-            for client_param, global_param in param_zip:
-                global_param.grad = client_param.grad
+            for clients_grad, global_param in param_zip:
+                global_param.grad = clients_grad
             server.global_optimizer.step()
 
             self.add_event(
@@ -435,7 +438,7 @@ class Simulation:
                     self.add_event(
                         SimEvent(
                             time=self.now(),
-                            type=SET.SERVER_CLIENT_SYNC_START,
+                            type=SET.SERVER_SEND_MODEL_START,
                             origin=server.id,
                             target=client.id,
                         )

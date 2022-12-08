@@ -23,15 +23,19 @@ def run_resnet_simulation():
 
     # Configure simulation
     simulation = Simulation()
-    s1 = simulation.create_server(training_mode=TrainingMode.ASYNC)
+    s1 = simulation.create_server(training_mode=TrainingMode.SYNC)
     c1 = simulation.create_client()
+    c2 = simulation.create_client()
     simulation.actors[c1].device = DEVICE
+    simulation.actors[c2].device = DEVICE
     server: Server = simulation.actors[s1]
     server.target_epoch = NUM_EPOCHS
     simulation.online_client(c1)
+    simulation.online_client(c2)
 
     simulation.print_actors()
     simulation.assign_client_to_server(client_id=c1, server_id=s1)
+    simulation.assign_client_to_server(client_id=c2, server_id=s1)
     simulation.time_limit = 800000  # Default value is 100
 
     # Assign dataset

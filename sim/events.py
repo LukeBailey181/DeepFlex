@@ -38,8 +38,8 @@ class SimEventType(Enum):
     SERVER_GLOBAL_MODEL_UPDATE_SYNC_END = auto()
 
     # Server sends global model to client
-    SERVER_CLIENT_SYNC_START = auto()
-    SERVER_CLIENT_SYNC_END = auto()
+    SERVER_SEND_MODEL_START = auto()
+    SERVER_SEND_MODEL_END = auto()
 
     # Client activities
     CLIENT_TRAINING_START = auto()
