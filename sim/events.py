@@ -6,7 +6,7 @@ from queue import PriorityQueue
 @unique
 class SimEventType(Enum):
     @staticmethod
-    def _generate_next_value_(name, start, count, last_values):
+    def _generate_next_value_(name, *_):
         return name
 
     def __str__(self):
@@ -51,27 +51,73 @@ class SimEventType(Enum):
     SIM_PRINT_ACTORS = auto()
 
 
+SET = SimEventType
+
+
+SET_EVENT_PRIORITIES = {
+    # Priorty 0: Simulation control events must be processed first
+    SET.SIM_PAUSE: 0,
+    SET.SIM_PRINT_ACTORS: 0,
+    # Priorty 1: Client/Server online status
+    SET.CLIENT_ONLINE: 1,
+    SET.CLIENT_OFFLINE: 1,
+    # Priority 2: Client/Server availability
+    SET.CLIENT_AVAILABLE: 2,
+    SET.CLIENT_CLAIMED: 2,
+    SET.SERVER_ACQUIRE_CLIENT: 2,
+    SET.SERVER_RELEASE_CLIENT: 2,
+    # Priority 3: _END events processed first before _START events
+    SET.SERVER_CLIENT_AGGREGATION_END: 3,
+    SET.SERVER_GLOBAL_MODEL_UPDATE_ASYNC_END: 3,
+    SET.SERVER_GLOBAL_MODEL_UPDATE_SYNC_END: 3,
+    SET.SERVER_SEND_MODEL_END: 3,
+    SET.CLIENT_TRAINING_END: 3,
+    # Priority 4: _START events
+    SET.SERVER_CLIENT_AGGREGATION_START: 4,
+    SET.SERVER_GLOBAL_MODEL_UPDATE_ASYNC_START: 4,
+    SET.SERVER_GLOBAL_MODEL_UPDATE_SYNC_START: 4,
+    SET.SERVER_SEND_MODEL_START: 4,
+    SET.CLIENT_TRAINING_START: 4,
+    # Aggregation requests and deferrals are considered "start" events
+    SET.CLIENT_REQUEST_AGGREGATION: 4,
+    SET.SERVER_DEFER_CLIENT_REQUEST: 4,
+}
+
+
 @dataclass(order=True, frozen=True)
 class SimEvent:
-    time: int
+    time: int = field(compare=True)
     type: SimEventType = field(compare=False)
-    duration: int = field(compare=False, default=0)
+    priority: int = field(compare=True, init=False)
     origin: int = field(compare=False, default=-1)
     target: int = field(compare=False, default=-1)
+    duration: int = field(compare=False, default=0)
+
+    def __post_init__(self):
+        object.__setattr__(self, "priority", SET_EVENT_PRIORITIES[self.type])
 
 
 if __name__ == "__main__":
+    missing_event_priorities = []
+    for event_type in SET:
+        if event_type not in SET_EVENT_PRIORITIES:
+            missing_event_priorities.append(event_type)
+
+    print("Events missing priorities:")
+    for event_type in missing_event_priorities:
+        print(event_type)
+
+    # Event priorty test
     q = PriorityQueue()
 
-    a = SimEvent(origin=0, time=1, type=SimEventType.CLIENT_ONLINE)
-    b = SimEvent(origin=0, time=3, type=SimEventType.CLIENT_ONLINE)
-    c = SimEvent(origin=0, time=3, type=SimEventType.CLIENT_OFFLINE)
-    d = SimEvent(origin=0, time=7, type=SimEventType.CLIENT_REQUEST_AGGREGATION)
-
-    q.put(b)
-    q.put(c)
-    q.put(a)
-    q.put(d)
+    q.put(SimEvent(origin=1, time=8, type=SimEventType.CLIENT_TRAINING_START))
+    q.put(SimEvent(origin=2, time=8, type=SimEventType.CLIENT_TRAINING_START))
+    q.put(SimEvent(origin=0, time=8, type=SimEventType.CLIENT_TRAINING_END))
+    q.put(SimEvent(origin=0, time=5, type=SimEventType.CLIENT_TRAINING_START))
+    q.put(SimEvent(origin=1, time=8, type=SimEventType.CLIENT_TRAINING_END))
+    q.put(SimEvent(origin=1, time=3, type=SimEventType.CLIENT_ONLINE))
+    q.put(SimEvent(origin=0, time=1, type=SimEventType.CLIENT_ONLINE))
+    q.put(SimEvent(origin=0, time=8, type=SimEventType.CLIENT_OFFLINE))
 
     while not q.empty():
         event = q.get()
