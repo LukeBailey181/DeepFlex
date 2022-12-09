@@ -49,9 +49,9 @@ class Simulation:
             new_server = Server()
             self.actors[new_server.id] = new_server
 
-    def create_client(self, client_speed=None, t=None):
-        speed = client_speed if client_speed else Client.default_speed
-        new_client = Client(speed)
+    def create_client(self, training_time=None, t=None):
+        train_time = training_time if training_time else Client.default_training_time
+        new_client = Client(training_time=train_time)
         self.actors[new_client.id] = new_client
         return new_client.id
 
@@ -128,7 +128,7 @@ class Simulation:
 
     def process_event(self, event: SimEvent, **kwargs) -> None:
         # TODO: Add verbosity flag to control event printing
-        ic(event)
+        # ic(event)
 
         # Simulation control events
         if event.type == SET.SIM_PAUSE:
@@ -359,7 +359,7 @@ class Simulation:
 
             self.add_event(
                 SimEvent(
-                    time=self.now(),  # TODO: add in update time
+                    time=self.now() + server.update_time,  # TODO: add in update time
                     type=SET.SERVER_GLOBAL_MODEL_UPDATE_ASYNC_END,
                     origin=server.id,
                     target=client.id,
@@ -411,7 +411,7 @@ class Simulation:
 
             self.add_event(
                 SimEvent(
-                    time=self.now(),
+                    time=self.now() + server.update_time,
                     type=SET.SERVER_GLOBAL_MODEL_UPDATE_SYNC_END,
                     origin=server.id,
                     target=None,

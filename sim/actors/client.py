@@ -14,11 +14,9 @@ class Client(Actor):
     default_speed = 1
     default_retry_time = 5
 
-    def __init__(self, speed=1) -> None:
+    def __init__(self, training_time=10) -> None:
         super().__init__(category="Client")
-        self.speed = speed
-        # TODO: make this dependent on task
-        self.training_time = 10 // speed
+        self.training_time = training_time
 
         self.assigned_server: Optional[Server]
         self.model = {}
