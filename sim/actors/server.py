@@ -23,8 +23,9 @@ class Server(Actor):
     def __init__(self) -> None:
         super().__init__(category="Parameter Server")
         # TODO: make this configurable
-        self.aggregation_time = 10
-        self.sync_time = 2
+        self.aggregation_time = 1
+        self.sync_time = 1
+        self.update_time = 8
 
         # Training mode, starts as synchronous
         self.mode: TrainingMode = TrainingMode.SYNC
@@ -59,18 +60,18 @@ class Server(Actor):
         for name in self.server_gradient_dict:
             self.server_gradient_dict[name] = 0
 
-    def aggregate_gradients(self, gradients_list):
-        for g in gradients_list:
-            for name in g:
-                self.server_gradient_dict[name] += g[name]
+    # def aggregate_gradients(self, gradients_list):
+    #     for g in gradients_list:
+    #         for name in g:
+    #             self.server_gradient_dict[name] += g[name]
 
-        # normalized gradient values
-        gradients_list_length = len(gradients_list)
-        for name in g:
-            self.server_gradient_dict[name] /= gradients_list_length
+    #     # normalized gradient values
+    #     gradients_list_length = len(gradients_list)
+    #     for name in g:
+    #         self.server_gradient_dict[name] /= gradients_list_length
 
-        for name, w in self.global_model.named_parameters():
-            self.global_model.named_parameters[name] += self.server_gradient_dict[name]
+    #     for name, w in self.global_model.named_parameters():
+    #         self.global_model.named_parameters[name] += self.server_gradient_dict[name]
 
     def receive_client_update(self, client_id: int, client_model):
         client_model.to(self.device)
