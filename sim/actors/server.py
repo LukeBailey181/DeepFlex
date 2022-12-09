@@ -75,8 +75,7 @@ class Server(Actor):
 
     def receive_client_update(self, client_id: int, client_model):
         client_model.to(self.device)
-        model_copy = deepcopy(client_model)
-        client_grads = [x for x in model_copy.parameters()]
+        client_grads = [x.grad.to("cpu") for x in client_model.parameters()]
         self.client_updates[client_id] = client_grads
 
     def set_train_dataset(self, dataloader: DataLoader) -> None:
