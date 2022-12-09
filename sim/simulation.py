@@ -258,27 +258,30 @@ class Simulation:
             # Client requests aggregation from server
             client, server = self.client_server_from_event(event)
 
-            defer_event = SimEvent(
-                time=self.now(),
-                type=SET.SERVER_DEFER_CLIENT_REQUEST,
-                origin=server.id,
-                target=client.id,
-            )
-
-            start_event = SimEvent(
-                time=self.now(),
-                type=SET.SERVER_CLIENT_AGGREGATION_START,
-                origin=server.id,
-                target=client.id,
-            )
-
-            self.add_event(defer_event if server.is_busy else start_event)
+            if server.is_busy:
+                self.add_event(
+                    SimEvent(
+                        time=self.now(),
+                        type=SET.SERVER_DEFER_CLIENT_REQUEST,
+                        origin=server.id,
+                        target=client.id,
+                    )
+                )
+            else:
+                self.add_event(
+                    SimEvent(
+                        time=self.now(),
+                        type=SET.SERVER_CLIENT_AGGREGATION_START,
+                        origin=server.id,
+                        target=client.id,
+                    )
+                )
 
         elif event.type == SET.SERVER_DEFER_CLIENT_REQUEST:
             # Server defers aggregation requests
             server, client = self.server_client_from_event(event)
 
-            if client.staleness < server.client_staleness_threshold:
+            if server.mode == TrainingMode.ASYNC and client.staleness < server.client_staleness_threshold:
                 # client continues training if staleness not exceeded
                 self.add_event(
                     SimEvent(
@@ -305,10 +308,7 @@ class Simulation:
             server, client = self.server_client_from_event(event)
             server.is_busy = True
 
-            # TODO: keep on GPU if possible
-            client.model.to("cpu")
-            client_grads = [x.grad for x in client.model.parameters()]
-            server.client_updates[client.id] = deepcopy(client_grads)
+            server.receive_client_update(client.id, client.model)
 
             self.add_event(
                 SimEvent(
@@ -399,7 +399,7 @@ class Simulation:
 
             # list of list of tensors
             add_tensors = lambda x, y: list(map(torch.add, x, y))
-            grad_updates = reduce(add_tensors, server.client_updates.values())
+            grad_updates = reduce(add_tensors, server.client_updates.values(), [])
 
             update_count = len(server.client_updates.keys())
             grad_updates = [x / update_count for x in grad_updates]

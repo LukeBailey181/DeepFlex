@@ -1,4 +1,5 @@
 from collections import defaultdict
+from copy import deepcopy
 from enum import Enum, unique
 from typing import TYPE_CHECKING, Optional
 
@@ -28,6 +29,7 @@ class Server(Actor):
         # Training mode, starts as synchronous
         self.mode: TrainingMode = TrainingMode.SYNC
 
+        self.device = torch.device("cpu")
         self.global_model = None
         self.global_optimizer = None
         self.assigned_clients: dict[int, Client] = {}
@@ -69,6 +71,12 @@ class Server(Actor):
 
         for name, w in self.global_model.named_parameters():
             self.global_model.named_parameters[name] += self.server_gradient_dict[name]
+
+    def receive_client_update(self, client_id: int, client_model):
+        client_model.to(self.device)
+        model_copy = deepcopy(client_model)
+        client_grads = [x for x in model_copy.parameters()]
+        self.client_updates[client_id] = client_grads
 
     def set_train_dataset(self, dataloader: DataLoader) -> None:
         self.train_dataset = dataloader
