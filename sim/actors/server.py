@@ -23,9 +23,9 @@ class Server(Actor):
     def __init__(self) -> None:
         super().__init__(category="Parameter Server")
         # TODO: make this configurable
-        self.aggregation_time = 1
-        self.sync_time = 1
-        self.update_time = 8
+        self.aggregation_time = 0
+        self.sync_time = 0
+        self.update_time = 16
 
         # Training mode, starts as synchronous
         self.mode: TrainingMode = TrainingMode.SYNC
