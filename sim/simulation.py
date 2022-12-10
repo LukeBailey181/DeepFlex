@@ -399,7 +399,7 @@ class Simulation:
 
             # list of list of tensors
             add_tensors = lambda x, y: list(map(torch.add, x, y))
-            grad_updates = reduce(add_tensors, server.client_updates.values(), [])
+            grad_updates = reduce(add_tensors, server.client_updates.values())
 
             update_count = len(server.client_updates.keys())
             grad_updates = [x / update_count for x in grad_updates]
