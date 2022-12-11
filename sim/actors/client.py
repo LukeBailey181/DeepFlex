@@ -26,6 +26,7 @@ class Client(Actor):
         self.optimizer = None
 
         self.task_complete: bool = False
+        self.going_offline: bool = False
         self.staleness = 0
         self.device = "cpu"
 

@@ -149,6 +149,10 @@ class Simulation:
             client: Client = self.actors[event.origin]
             self.scheduler.unassign_client(client)
 
+        elif event.type == SET.NOTIFY_CLIENT_OFFLINE:
+            client: Client = self.actors[event.origin]
+            client.going_offline = True
+
         elif event.type == SET.SERVER_ACQUIRE_CLIENT:
             # Server claims client and attempts synchronization
             server, client = self.server_client_from_event(event)
@@ -281,7 +285,10 @@ class Simulation:
             # Server defers aggregation requests
             server, client = self.server_client_from_event(event)
 
-            if server.mode == TrainingMode.ASYNC and client.staleness < server.client_staleness_threshold:
+            if (
+                server.mode == TrainingMode.ASYNC
+                and client.staleness < server.client_staleness_threshold
+            ):
                 # client continues training if staleness not exceeded
                 self.add_event(
                     SimEvent(
@@ -381,6 +388,17 @@ class Simulation:
                         target=server.id,
                     )
                 )
+
+            elif client.going_offline:
+                self.add_event(
+                    SimEvent(
+                        time=self.now(),
+                        type=SET.CLIENT_OFFLINE,
+                        origin=client.id,
+                        target=None,
+                    )
+                )
+
             else:
                 self.add_event(
                     SimEvent(

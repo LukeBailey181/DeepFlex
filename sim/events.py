@@ -19,6 +19,9 @@ class SimEventType(Enum):
     CLIENT_AVAILABLE = auto()   # Client is available and can be claimed
     CLIENT_CLAIMED = auto()
 
+    # Client should finish current task and go offline
+    NOTIFY_CLIENT_OFFLINE = auto()
+
     # Server activities
     SERVER_ACQUIRE_CLIENT = auto()
     SERVER_RELEASE_CLIENT = auto()
@@ -66,6 +69,7 @@ SET_EVENT_PRIORITIES = {
     SET.CLIENT_CLAIMED: 2,
     SET.SERVER_ACQUIRE_CLIENT: 2,
     SET.SERVER_RELEASE_CLIENT: 2,
+    SET.NOTIFY_CLIENT_OFFLINE: 2,
     # Priority 3: _END events processed first before _START events
     SET.SERVER_CLIENT_AGGREGATION_END: 3,
     SET.SERVER_GLOBAL_MODEL_UPDATE_ASYNC_END: 3,
