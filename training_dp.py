@@ -14,12 +14,20 @@ import argparse
 import os
 import random
 import numpy as np
+import time
+import pickle
 
 from training_latency_eval.resnet_helpers import (
     get_resnet,
     get_cfar_dataset,
     RESNET_BATCH_SIZE,
 )
+
+def analyze_list(number_list, list_name):
+    number_array = np.array(number_list)
+    median = np.median(number_array)
+    average = np.average(number_array)
+    print(list_name, ", Average:", average, ", Median:", median)
 
 def set_random_seeds(random_seed=0):
 
@@ -50,13 +58,14 @@ def evaluate(model, device, test_loader):
 def main():
 
     num_epochs_default = 20
-    batch_size_default = 256 # 1024
-    learning_rate_default = 0.1
+    batch_size_default = 64
+    learning_rate_default = 0.001
     random_seed_default = 42
-    model_dir_default = "/n/holylfs05/LABS/acc_lab/Users/yujichai/hungry_hungry_ps/fasrc_scrips/models"
+    model_dir_default = "/home/ec2-user/hungry_hungry_ps"
     model_filename_default = "resnet_distributed.pth"
     pretrained_flag = True
     resume_flag = False
+    num_gpus = 4
     TRAINSET_SIZE = None
     TESTSET_SIZE = None
 
@@ -79,6 +88,11 @@ def main():
     model_filename = argv.model_filename
     resume = argv.resume
 
+    if num_gpus > torch.cuda.device_count():
+        raise Exception("Number of GPU is larger than available!")
+    batch_size *= num_gpus
+    print("Using bash size of:", batch_size)
+
     # Create directories outside the PyTorch program
     # Do not create directory here because it is not multiprocess safe
     '''
@@ -95,9 +109,8 @@ def main():
     model = torchvision.models.resnet18(pretrained=pretrained_flag)
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    device_count = torch.cuda.device_count()
-    print("Number of GPU:", device_count)
-
+    device_count = num_gpus
+    print("Using", device_count, "GPU for training.")
     dp_model = torch.nn.DataParallel(model, device_ids=list(range(device_count)))
     dp_model.to(device)
 
@@ -112,30 +125,74 @@ def main():
     print("Number of training minibatches:", len(train_loader))
 
     criterion = nn.CrossEntropyLoss()
-    optimizer = optim.SGD(dp_model.parameters(), lr=learning_rate, momentum=0.9, weight_decay=1e-5)
+    optimizer = optim.SGD(dp_model.parameters(), lr=learning_rate, momentum=0.9)
+
+    # Timer Dictionary
+    time_dict = {'forward': [], 'backward': [], 'step': [], 'total': []}
+    acc_list = []
+    loss_list = []
+    total_loss_list = []
 
     # Loop over the dataset multiple times
     for epoch in range(num_epochs):
-
+        print("-" * 75)
         print("Epoch: {}, Training ...".format(epoch))
-        
+
+        dp_model.train()
+        total_loss = 0
+
+        total_start = time.perf_counter()
+        for data in train_loader:
+            inputs, labels = data[0].to(device), data[1].to(device)
+            optimizer.zero_grad()
+            
+            # Forward Pass
+            start = time.perf_counter()
+            outputs = dp_model(inputs)
+            dur = time.perf_counter() - start
+            time_dict['forward'].append(dur)
+
+            # Generate Loss
+            loss = criterion(outputs, labels)
+            loss_cpu = loss.cpu().item()
+            total_loss += loss_cpu
+            loss_list.append(loss_cpu)
+
+            # Backward Pass
+            start = time.perf_counter()
+            loss.backward()
+            dur = time.perf_counter() - start
+            time_dict['backward'].append(dur)
+
+            # Optimizer Step
+            start = time.perf_counter()
+            optimizer.step()
+            dur = time.perf_counter() - start
+            time_dict['step'].append(dur)
+        total_dur = time.perf_counter() - total_start
+        time_dict['total'].append(total_dur)
+        print(f"Time for this epoch: {total_dur:0.4f} seconds")
+        total_loss_list.append(total_loss/len(train_loader))
+
+        dp_model.eval()
         # Save and evaluate model routinely
         if epoch % 1 == 0:
             accuracy = evaluate(model=dp_model, device=device, test_loader=test_loader)
             #torch.save(dp_model.state_dict(), model_filepath)
-            print("-" * 75)
+            acc_list.append(accuracy)
             print("Epoch: {}, Accuracy: {}".format(epoch, accuracy))
-            print("-" * 75)
 
-        dp_model.train()
+    for list_name, number_list in time_dict.items():
+        analyze_list(number_list, list_name)
 
-        for data in train_loader:
-            inputs, labels = data[0].to(device), data[1].to(device)
-            optimizer.zero_grad()
-            outputs = dp_model(inputs)
-            loss = criterion(outputs, labels)
-            loss.backward()
-            optimizer.step()
+    print("Accuracy List:", acc_list)
+    print("Total Loss List:", total_loss_list)
+    with open('./data/results/acc_list_GPU_'+str(num_gpus)+'.pickle', 'wb') as f:
+        pickle.dump(acc_list, f)
+    with open('./data/results/loss_list_GPU_'+str(num_gpus)+'.pickle', 'wb') as f:
+        pickle.dump(loss_list, f)
+    with open('./data/results/total_loss_list_GPU_'+str(num_gpus)+'.pickle', 'wb') as f:
+        pickle.dump(total_loss_list, f)
 
 if __name__ == "__main__":
     
