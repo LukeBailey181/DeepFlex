@@ -1,5 +1,5 @@
 # DeepFlex
-Experiments in dynamic resource allocation for DNN training.
+Distributed DNN training simulator.
 
 ## Simulation Methods
 
